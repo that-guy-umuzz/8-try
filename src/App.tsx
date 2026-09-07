@@ -28,11 +28,8 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null)
   const [scrolled, setScrolled] = useState(false)
 
-  // Queue / Next Chair — ONE spot per person
-  const [peopleAhead] = useState(1)
-  const [nowMin, setNowMin] = useState(() => new Date().getMinutes())
-  const [inQueue, setInQueue] = useState<boolean>(() => {
-    try { return localStorage.getItem('baldy_in_queue') === '1' } catch { return false }
+  const [joinCount, setJoinCount] = useState<number>(() => {
+    try { return parseInt(localStorage.getItem('baldy_join_count') || '0', 10) } catch { return 0 }
   })
 
   // Reviews
@@ -84,8 +81,9 @@ export default function App() {
     setToast(`You're in line! ${peopleAhead === 0 ? "No one ahead" : `${peopleAhead} ahead`} — Michael will see you soon. One spot only.`)
   }
 
-  const handleLeaveQueue = () => {
-    if (!inQueue) {
+  useEffect(() => {
+    try { localStorage.setItem('baldy_join_count', String(joinCount)) } catch {}
+  }, [joinCount])
       setToast("You're not in the queue right now.")
       return
     }
@@ -93,24 +91,24 @@ export default function App() {
     setToast("You left the queue — tap Join again if you change your mind.")
   }
 
-  const hours = [
-    { day: "Monday", time: "9:00 AM – 4:00 PM" },
-    { day: "Tuesday", time: "9:00 AM – 4:00 PM" },
-    { day: "Wednesday", time: "9:00 AM – 4:00 PM" },
-    { day: "Thursday", time: "9:00 AM – 4:00 PM" },
-    { day: "Friday", time: "9:00 AM – 4:00 PM" },
-    { day: "Saturday", time: "9:00 AM – 2:00 PM", highlight: true },
-    { day: "Sunday", time: "Closed", closed: true },
-  ]
+  const handleJoinQueue = () => {
+    if (joinCount >= 3) {
+      setToast("Max 3 spots — you've pressed join 3 times.")
+      return
+    }
+    setJoinCount(c => c + 1)
+    const newCount = joinCount + 1
+    setToast(`Joined! ${newCount}/3 spots held. ${peopleAhead === 0 ? "No one ahead" : `${peopleAhead} ahead`} — Michael will see you soon.`)
+  }
 
-  const avgRating = reviews.length ? (reviews.reduce((a,b)=>a+b.stars,0)/reviews.length).toFixed(1) : "4.7"
-
-  const handleAddReview = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newName.trim() || !newText.trim()) { setToast("Add your name and review"); return }
-    const r: Review = { id: Date.now(), name: newName.trim(), text: newText.trim(), stars: newStars, tag: "Just now • Walk-in" }
-    setReviews(prev => [r, ...prev])
-    setNewName(""); setNewText(""); setNewStars(5)
+  const handleLeaveQueue = () => {
+    if (joinCount <= 0) {
+      setToast("You're not in the queue.")
+      return
+    }
+    setJoinCount(c => Math.max(0, c - 1))
+    setToast("Left one spot. You can still rejoin.")
+  }
     setReviewOpen(false)
     setToast(`Thanks ${r.name}! Review added — ${r.stars} stars`)
   }
