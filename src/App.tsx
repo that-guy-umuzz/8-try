@@ -28,12 +28,15 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null)
   const [scrolled, setScrolled] = useState(false)
 
-  const [joinCount, setJoinCount] = useState<number>(() => {
-    try { return parseInt(localStorage.getItem('baldy_join_count') || '0', 10) } catch { return 0 }
-  })
-  const [inQueue, setInQueue] = useState<boolean>(() => {
-    try { return localStorage.getItem('baldy_in_queue') === '1' } catch { return false }
-  })
+  const [inQueue, setInQueue] = useState<number>(() => {
+  try {
+    const saved = localStorage.getItem('baldy_in_queue')
+    if (saved === '1') return 1 // migrate existing users
+    return Math.min(2, Math.max(0, parseInt(saved || '0', 10)))
+  } catch {
+    return 0
+  }
+})
   const [nowMin, setNowMin] = useState<number>(() => new Date().getMinutes())
   const [peopleAhead, setPeopleAhead] = useState(0)
 
@@ -63,35 +66,46 @@ export default function App() {
       return () => clearTimeout(t)
     }
   }, [toast])
-
-  useEffect(() => {
-    try { localStorage.setItem('baldy_reviews', JSON.stringify(reviews)) } catch {}
-  }, [reviews])
-
+  
+useEffect(() => {
+    useEffect(() => {
+  try {
+    localStorage.setItem('baldy_in_queue', String(inQueue))
+  } catch {}
+}, [inQueue])
   useEffect(() => {
     try { localStorage.setItem('baldy_in_queue', inQueue ? '1' : '0') } catch {}
   }, [inQueue])
 
-  const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
-    setMobileMenu(false)
-  }
-
-  const waitMins = peopleAhead === 0 ? 5 + (nowMin % 6) : peopleAhead * 18 + 8 + (nowMin % 7)
-
   const handleJoinQueue = () => {
-    if (inQueue) {
-      setToast("You're already in line — one spot per person. You can only join once.")
-      return
-    }
-    setInQueue(true)
-    setToast(`You're in line! ${peopleAhead === 0 ? "No one ahead" : `${peopleAhead} ahead`} — Michael will see you soon. One spot only.`)
+  if (inQueue >= 2) {
+    setToast("You're already holding both queue spots.")
+    return
   }
 
-  const handleLeaveQueue = () => {
-    if (!inQueue) {
-      setToast("You're not in the queue right now.")
-      return
+  const nextSpots = inQueue + 1
+  setInQueue(nextSpots)
+  setToast(
+    nextSpots === 2
+      ? "You're holding 2 spots in line."
+      : `You're in line! ${peopleAhead === 0 ? "No one ahead" : `${peopleAhead} ahead`} — Michael will see you soon.`
+  )
+}
+
+const handleLeaveQueue = () => {
+  if (inQueue <= 0) {
+    setToast("You're not in the queue right now.")
+    return
+  }
+
+  const remainingSpots = inQueue - 1
+  setInQueue(remainingSpots)
+  setToast(
+    remainingSpots === 0
+      ? "You left the queue."
+      : "One queue spot removed — you still have 1 spot."
+  )
+}
     }
     setInQueue(false)
     setToast("You left the queue — tap Join again if you change your mind.")
@@ -254,7 +268,7 @@ export default function App() {
                 </p>
 
                 <div className="mt-8 flex flex-wrap gap-3">
-                  <button onClick={handleJoinQueue} disabled={inQueue} className={`inline-flex items-center gap-2 font-extrabold tracking-widest uppercase text-[13px] px-7 py-4 rounded-full transition-colors ${inQueue ? 'bg-emerald-500/20 text-emerald-200 cursor-not-allowed' : 'bg-[#C5A059] text-black hover:bg-[#dcb777]'}`}>
+                  <button onClick={handleJoinQueue} disabled={inQueue >= 2} className={`inline-flex items-center gap-2 font-extrabold tracking-widest uppercase text-[13px] px-7 py-4 rounded-full transition-colors ${inQueue ? 'bg-emerald-500/20 text-emerald-200 cursor-not-allowed' : 'bg-[#C5A059] text-black hover:bg-[#dcb777]'}`}>
                     {inQueue ? "✓ You're In The Queue (One Spot Only)" : "Join Queue — One Spot Only"}
                     {!inQueue && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>}
                   </button>
@@ -455,10 +469,10 @@ export default function App() {
                       Join once, hold your place. Leave if plans change, then you can rejoin. Prevents line blocking.
                     </p>
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button onClick={handleJoinQueue} disabled={inQueue} className={`rounded-full py-2.5 text-xs font-black tracking-widest uppercase transition-colors ${inQueue ? 'bg-white/10 text-white/30 cursor-not-allowed' : 'bg-[#C5A059] text-black'}`}>
+                      <button onClick={handleJoinQueue} disabled={inQueue >= 2} className={`rounded-full py-2.5 text-xs font-black tracking-widest uppercase transition-colors ${inQueue ? 'bg-white/10 text-white/30 cursor-not-allowed' : 'bg-[#C5A059] text-black'}`}>
                         {inQueue ? "✓ Already In" : "+ Join Queue"}
                       </button>
-                      <button onClick={handleLeaveQueue} disabled={!inQueue} className={`rounded-full py-2.5 text-xs font-black tracking-widest uppercase transition-colors border ${!inQueue ? 'bg-white/5 text-white/20 border-white/10 cursor-not-allowed' : 'border-white/10 text-white'}`}>
+                      <button onClick={handleLeaveQueue} disabled={inQueue <= 0} className={`rounded-full py-2.5 text-xs font-black tracking-widest uppercase transition-colors border ${!inQueue ? 'bg-white/5 text-white/20 border-white/10 cursor-not-allowed' : 'border-white/10 text-white'}`}>
                         Leave Spot
                       </button>
                     </div>
@@ -488,10 +502,10 @@ export default function App() {
                     <div className="h-full bg-[#C5A059] rounded-full transition-all" style={{ width: `${peopleAhead===0?100:Math.max(20,100-peopleAhead*18)}%` }} />
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button onClick={handleLeaveQueue} disabled={!inQueue} className={`rounded-full py-2.5 text-xs font-black uppercase transition-colors ${!inQueue ? 'bg-zinc-100 text-black/20 border border-black/5 cursor-not-allowed' : 'bg-zinc-900 text-white'}`}>
+                    <button onClick={handleLeaveQueue} disabled={inQueue <= 0} className={`rounded-full py-2.5 text-xs font-black uppercase transition-colors ${!inQueue ? 'bg-zinc-100 text-black/20 border border-black/5 cursor-not-allowed' : 'bg-zinc-900 text-white'}`}>
                       Leave
                     </button>
-                    <button onClick={handleJoinQueue} disabled={inQueue} className={`rounded-full py-2.5 text-xs font-black uppercase transition-colors ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#C5A059] text-black'}`}>
+                    <button onClick={handleJoinQueue} disabled={inQueue >= 2} className={`rounded-full py-2.5 text-xs font-black uppercase transition-colors ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#C5A059] text-black'}`}>
                       Join
                     </button>
                   </div>
@@ -555,10 +569,10 @@ export default function App() {
               </div>
 
               <div className="mt-8 flex gap-3">
-                <button onClick={handleJoinQueue} disabled={inQueue} className={`flex-1 rounded-full py-3.5 text-[13px] font-black tracking-widest uppercase transition-colors ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
+                <button onClick={handleJoinQueue} disabled={inQueue >=2} className={`flex-1 rounded-full py-3.5 text-[13px] font-black tracking-widest uppercase transition-colors ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
                   {inQueue ? "✓ You're In (One Spot)" : "Join Queue Once"}
                 </button>
-                <button onClick={handleLeaveQueue} disabled={!inQueue} className={`flex-1 rounded-full py-3.5 text-[13px] font-black tracking-widest uppercase transition-colors border ${!inQueue ? 'bg-white text-black/20 border-black/5 cursor-not-allowed' : 'border-black/10 bg-white text-black'}`}>
+                <button onClick={handleLeaveQueue} disabled={!inQueue <=0} className={`flex-1 rounded-full py-3.5 text-[13px] font-black tracking-widest uppercase transition-colors border ${!inQueue ? 'bg-white text-black/20 border-black/5 cursor-not-allowed' : 'border-black/10 bg-white text-black'}`}>
                   Leave Spot
                 </button>
               </div>
@@ -708,10 +722,10 @@ export default function App() {
                 <h3 className="font-black text-[16px]">One Spot Per Person — Fair Line</h3>
                 <p className="mt-2 text-sm text-black/60">Join once, hold one spot. Can't double-book. Leave if you need to, then rejoin. Keeps Saturdays fair.</p>
                 <div className="mt-4 flex gap-2">
-                  <button onClick={handleJoinQueue} disabled={inQueue} className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-black tracking-widest uppercase ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
+                  <button onClick={handleJoinQueue} disabled={inQueue >=2} className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-black tracking-widest uppercase ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
                     {inQueue ? "✓ You're In Line" : "Join Queue — Once Only"}
                   </button>
-                  <button onClick={handleLeaveQueue} disabled={!inQueue} className={`px-5 py-2.5 text-xs font-black uppercase rounded-full border ${!inQueue ? 'border-black/5 text-black/20 cursor-not-allowed' : 'border-black/10 text-black'}`}>
+                  <button onClick={handleLeaveQueue} disabled={!inQueue <=0} className={`px-5 py-2.5 text-xs font-black uppercase rounded-full border ${!inQueue ? 'border-black/5 text-black/20 cursor-not-allowed' : 'border-black/10 text-black'}`}>
                     Leave
                   </button>
                 </div>
@@ -734,10 +748,10 @@ export default function App() {
               </div>
             </div>
             <div className="relative flex flex-wrap gap-3 w-full lg:w-auto">
-              <button onClick={handleJoinQueue} disabled={inQueue} className={`flex-1 lg:flex-none rounded-full px-8 py-4 font-black tracking-widest uppercase text-sm transition-colors ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
+              <button onClick={handleJoinQueue} disabled={inQueue >=2} className={`flex-1 lg:flex-none rounded-full px-8 py-4 font-black tracking-widest uppercase text-sm transition-colors ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
                 {inQueue ? "✓ In Queue" : "Join Queue"}
               </button>
-              <button onClick={handleLeaveQueue} disabled={!inQueue} className={`flex-1 lg:flex-none rounded-full px-8 py-4 font-black tracking-widest uppercase text-sm border transition-colors ${!inQueue ? 'border-black/10 bg-white text-black/20 cursor-not-allowed' : 'border-black/10 bg-white text-black'}`}>
+              <button onClick={handleLeaveQueue} disabled={!inQueue <=0} className={`flex-1 lg:flex-none rounded-full px-8 py-4 font-black tracking-widest uppercase text-sm border transition-colors ${!inQueue ? 'border-black/10 bg-white text-black/20 cursor-not-allowed' : 'border-black/10 bg-white text-black'}`}>
                 Leave
               </button>
             </div>
@@ -800,10 +814,10 @@ export default function App() {
               <p><b>Why?</b> Stops someone from spamming the board and jumping line. Keeps it fair — Michael sees real count.</p>
               <p><b>Current:</b> {peopleAhead} people ahead, ~{waitMins} min. {inQueue ? "You have 1 spot held." : "You're not in line yet — tap Join once."}</p>
               <div className="grid grid-cols-2 gap-2 pt-2">
-                <button onClick={handleJoinQueue} disabled={inQueue} className={`rounded-full py-3 text-xs font-black uppercase ${inQueue ? 'bg-zinc-100 text-black/30 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
+                <button onClick={handleJoinQueue} disabled={inQueue >=2} className={`rounded-full py-3 text-xs font-black uppercase ${inQueue ? 'bg-zinc-100 text-black/30 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
                   {inQueue ? "Already In" : "Join"}
                 </button>
-                <button onClick={handleLeaveQueue} disabled={!inQueue} className={`rounded-full py-3 text-xs font-black uppercase border ${!inQueue ? 'bg-white text-black/20 border-black/5 cursor-not-allowed' : 'border-black/10 bg-white text-black'}`}>
+                <button onClick={handleLeaveQueue} disabled={!inQueue <=0} className={`rounded-full py-3 text-xs font-black uppercase border ${!inQueue ? 'bg-white text-black/20 border-black/5 cursor-not-allowed' : 'border-black/10 bg-white text-black'}`}>
                   Leave
                 </button>
               </div>
