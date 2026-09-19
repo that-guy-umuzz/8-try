@@ -67,7 +67,6 @@ export default function App() {
     }
   }, [toast])
   
-useEffect(() => {
     useEffect(() => {
   try {
     localStorage.setItem('baldy_in_queue', String(inQueue))
@@ -89,7 +88,6 @@ useEffect(() => {
     nextSpots === 2
       ? "You're holding 2 spots in line."
       : `You're in line! ${peopleAhead === 0 ? "No one ahead" : `${peopleAhead} ahead`} — Michael will see you soon.`
-  )
 }
 
 const handleLeaveQueue = () => {
