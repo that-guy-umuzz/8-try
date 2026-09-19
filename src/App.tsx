@@ -68,13 +68,7 @@ export default function App() {
   }, [toast])
   
 useEffect(() => {
-    useEffect(() => {
-  try {
-    localStorage.setItem('baldy_in_queue', String(inQueue))
-  } catch {}
-}, [inQueue])
-  useEffect(() => {
-    try { localStorage.setItem('baldy_in_queue', inQueue ? '1' : '0') } catch {}
+    try { localStorage.setItem('baldy_in_queue', String(inQueue)) } catch {}
   }, [inQueue])
 
   const handleJoinQueue = () => {
@@ -106,10 +100,6 @@ const handleLeaveQueue = () => {
       : "One queue spot removed — you still have 1 spot."
   )
 }
-    }
-    setInQueue(false)
-    setToast("You left the queue — tap Join again if you change your mind.")
-  }
 
   const handleAddReview = (e: React.FormEvent) => {
     e.preventDefault()
