@@ -8,6 +8,8 @@ type Review = {
   tag: string
 }
 
+const MAX_QUEUE_SPOTS = 2
+
 const INITIAL_REVIEWS: Review[] = [
   {
     id: 1,
@@ -53,8 +55,8 @@ const cx = (...classes: Array<string | false | null | undefined>) =>
 
 const scrollTo = (id: string) => {
   if (typeof document === 'undefined') return
-  const element = document.getElementById(id)
-  element?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const el = document.getElementById(id)
+  el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 export default function App() {
@@ -63,16 +65,17 @@ export default function App() {
   const [reviewOpen, setReviewOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [scrolled, setScrolled] = useState(false)
-  const [nowMin, setNowMin] = useState<number>(() => new Date().getMinutes())
+  const [nowMin, setNowMin] = useState(() => new Date().getMinutes())
 
   const [inQueue, setInQueue] = useState<number>(() => {
     if (typeof window === 'undefined') return 0
 
     try {
       const saved = window.localStorage.getItem('baldy_in_queue')
-      if (saved === '1') return 1
-      const parsed = Number.parseInt(saved ?? '0', 10)
-      return Number.isFinite(parsed) ? Math.min(2, Math.max(0, parsed)) : 0
+      if (saved === null) return 0
+      const value = Number.parseInt(saved, 10)
+      if (Number.isNaN(value)) return 0
+      return Math.min(MAX_QUEUE_SPOTS, Math.max(0, value))
     } catch {
       return 0
     }
@@ -93,16 +96,21 @@ export default function App() {
   const [newName, setNewName] = useState('')
   const [newText, setNewText] = useState('')
 
-  const peopleAhead = useMemo(() => (inQueue ? 2 : 3), [inQueue])
-
   const avgRating = useMemo(
-    () => (reviews.length ? reviews.reduce((sum, review) => sum + review.stars, 0) / reviews.length : 0),
+    () => (reviews.length ? reviews.reduce((sum, item) => sum + item.stars, 0) / reviews.length : 0),
     [reviews]
   )
 
+  const peopleAhead = useMemo(() => {
+    if (inQueue === 0) return 3
+    if (inQueue === 1) return 2
+    return 1
+  }, [inQueue])
+
   const waitMins = useMemo(() => {
-    const base = peopleAhead * 8
-    return inQueue ? Math.max(5, base - 4) : Math.max(5, base)
+    if (inQueue === 0) return Math.max(5, peopleAhead * 7)
+    if (inQueue === 1) return Math.max(5, peopleAhead * 6)
+    return Math.max(5, peopleAhead * 5)
   }, [inQueue, peopleAhead])
 
   useEffect(() => {
@@ -119,7 +127,6 @@ export default function App() {
 
   useEffect(() => {
     if (!toast) return
-
     const timeoutId = window.setTimeout(() => setToast(null), 3400)
     return () => window.clearTimeout(timeoutId)
   }, [toast])
@@ -141,7 +148,7 @@ export default function App() {
   }, [reviews])
 
   const handleJoinQueue = () => {
-    if (inQueue >= 2) {
+    if (inQueue >= MAX_QUEUE_SPOTS) {
       setToast("You're already holding both queue spots.")
       return
     }
@@ -149,7 +156,7 @@ export default function App() {
     const nextSpots = inQueue + 1
     setInQueue(nextSpots)
 
-    if (nextSpots === 2) {
+    if (nextSpots === MAX_QUEUE_SPOTS) {
       setToast("You're holding 2 spots in line.")
       return
     }
@@ -157,7 +164,7 @@ export default function App() {
     setToast(
       peopleAhead === 0
         ? "You're in line! No one ahead — Michael will see you soon."
-        : `You're in line! ${peopleAhead} ahead — Michael will see you soon.`
+        : `You're holding 1 spot in line — ${peopleAhead} ahead.`
     )
   }
 
@@ -171,7 +178,9 @@ export default function App() {
     setInQueue(remainingSpots)
 
     setToast(
-      remainingSpots === 0 ? 'You left the queue.' : 'One queue spot removed — you still have 1 spot.'
+      remainingSpots === 0
+        ? 'You left the queue.'
+        : "One queue spot removed — you're still holding 1 spot."
     )
   }
 
@@ -180,7 +189,6 @@ export default function App() {
 
     const name = newName.trim()
     const text = newText.trim()
-
     if (!name || !text) return
 
     const review: Review = {
@@ -212,6 +220,9 @@ export default function App() {
     }
   }
 
+  const queueText =
+    inQueue === 0 ? 'Not in line' : inQueue === 1 ? 'Holding 1 spot' : 'Holding 2 spots'
+
   return (
     <div
       className="min-h-screen bg-[#FDF8F0] text-[#111111] selection:bg-[#C5A059] selection:text-white"
@@ -238,7 +249,7 @@ export default function App() {
             </span>
             <span className="hidden h-1 w-1 rounded-full bg-white/30 sm:block" />
             <span className="rounded-full bg-[#C5A059] px-2.5 py-1 text-[10px] tracking-widest text-black">
-              4.7★ • Over 5 Years • ONE SPOT RULE
+              4.7★ • Over 5 Years • TWO SPOT RULE
             </span>
           </div>
         </div>
@@ -263,7 +274,7 @@ export default function App() {
                   OCEAN CITY, MD • MICHAEL
                 </div>
                 <div className="mt-1 text-[9px] font-semibold tracking-widest text-black/60">
-                  ONE CHAIR • ONE SPOT IN QUEUE • CUT RIGHT.
+                  ONE CHAIR • TWO SPOTS MAX • CUT RIGHT.
                 </div>
               </div>
             </button>
@@ -347,10 +358,10 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-widest text-white/60">
-                    Live Queue — One Spot Only
+                    Live Queue — Two Spots Max
                   </div>
                   <div className="text-sm font-black">
-                    {peopleAhead} ahead • {inQueue ? "You're in line ✓" : 'Not in line'} • ~{waitMins} min
+                    {peopleAhead} ahead • {queueText} • ~{waitMins} min
                   </div>
                 </div>
               </div>
@@ -358,13 +369,13 @@ export default function App() {
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   onClick={handleJoinQueue}
-                  disabled={inQueue >= 2}
+                  disabled={inQueue >= MAX_QUEUE_SPOTS}
                   className={cx(
                     'rounded-full px-4 py-2.5 text-xs font-black uppercase transition-colors',
-                    inQueue ? 'cursor-not-allowed bg-white/10 text-white/40' : 'bg-white text-black'
+                    inQueue >= MAX_QUEUE_SPOTS ? 'cursor-not-allowed bg-white/10 text-white/40' : 'bg-white text-black'
                   )}
                 >
-                  {inQueue ? '✓ In Line' : '+ Join'}
+                  {inQueue >= MAX_QUEUE_SPOTS ? '✓ Full' : inQueue === 1 ? '+ 2nd Spot' : '+ Join'}
                 </button>
                 <button
                   onClick={handleLeaveQueue}
@@ -397,7 +408,7 @@ export default function App() {
                   <span className="inline-flex items-center gap-2 rounded-full border border-[#C5A059] bg-[#C5A059] px-3.5 py-1.5 text-black">
                     <span className="h-2 w-2 animate-pulse rounded-full bg-black" />
                     <span className="text-[11px] font-black uppercase tracking-[0.18em]">
-                      Walk-Ins Only • One Spot Per Person
+                      Walk-Ins Only • Two Spots Max
                     </span>
                   </span>
                   <span className="inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-white/80 backdrop-blur">
@@ -421,26 +432,25 @@ export default function App() {
                 </h1>
 
                 <p className="mt-6 max-w-[520px] text-[15px] leading-relaxed text-white/70 sm:text-[16px]">
-                  Michael's rule: <span className="font-bold text-white">one person, one spot in line.</span> No double bookings. Join once, wait your turn, get your $30 classic.
+                  Michael's rule: <span className="font-bold text-white">one person can hold up to two spots.</span> Join once, or twice if needed, then wait your turn.
                 </p>
 
                 <div className="mt-8 flex flex-wrap gap-3">
                   <button
                     onClick={handleJoinQueue}
-                    disabled={inQueue >= 2}
+                    disabled={inQueue >= MAX_QUEUE_SPOTS}
                     className={cx(
                       'inline-flex items-center gap-2 rounded-full px-7 py-4 text-[13px] font-extrabold uppercase tracking-widest transition-colors',
-                      inQueue
+                      inQueue >= MAX_QUEUE_SPOTS
                         ? 'cursor-not-allowed bg-emerald-100 text-emerald-900'
                         : 'bg-[#C5A059] text-black hover:bg-[#d4b77d]'
                     )}
                   >
-                    {inQueue ? "✓ You're In The Queue (One Spot Only)" : 'Join Queue — One Spot Only'}
-                    {!inQueue && (
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                      </svg>
-                    )}
+                    {inQueue >= MAX_QUEUE_SPOTS
+                      ? '✓ You Have Both Spots'
+                      : inQueue === 1
+                        ? 'Join 2nd Spot — Max 2'
+                        : 'Join Queue — Up To 2 Spots'}
                   </button>
 
                   <a
@@ -453,7 +463,7 @@ export default function App() {
 
                 <div className="mt-8 grid max-w-[520px] grid-cols-3 gap-3">
                   {[
-                    { value: inQueue ? 'IN LINE ✓' : 'NOT IN LINE', label: 'Your Status • One Spot' },
+                    { value: inQueue === 0 ? 'NOT IN LINE' : inQueue === 1 ? '1 SPOT ✓' : '2 SPOTS ✓', label: 'Your Status • Max 2' },
                     { value: `${peopleAhead} AHEAD`, label: 'People Ahead' },
                     { value: `${waitMins} MIN`, label: 'Est. Wait' },
                   ].map((stat) => (
@@ -461,7 +471,7 @@ export default function App() {
                       key={stat.label}
                       className={cx(
                         'rounded-2xl border p-3 text-center backdrop-blur',
-                        stat.value.includes('IN LINE ✓')
+                        stat.value.includes('1 SPOT') || stat.value.includes('2 SPOTS')
                           ? 'border-[#C5A059]/30 bg-[#C5A059]/20'
                           : 'border-white/10 bg-white/[0.07]'
                       )}
@@ -480,14 +490,14 @@ export default function App() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black text-xs font-black text-white">
-                        1
+                        {Math.min(inQueue, 2) || 1}
                       </span>
                       <div className="leading-tight">
                         <div className="text-[11px] font-black uppercase tracking-widest">
-                          Queue Rule — One Spot Per Person
+                          Queue Rule — Up To Two Spots
                         </div>
                         <div className="text-[13px] font-bold">
-                          {peopleAhead} ahead • {inQueue ? 'You have 1 spot' : 'Join to hold your spot'} • ~{waitMins} min
+                          {peopleAhead} ahead • {queueText} • ~{waitMins} min
                         </div>
                       </div>
                     </div>
@@ -517,14 +527,16 @@ export default function App() {
                       <div>
                         <div className="flex items-center gap-1.5 text-[12px] font-black uppercase tracking-widest">
                           <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-                          {inQueue ? 'You\'re in line • One spot' : 'Michael is cutting • Live'}
+                          {inQueue ? `You're in line • ${inQueue} spot${inQueue > 1 ? 's' : ''}` : 'Michael is cutting • Live'}
                         </div>
                         <div className="text-[15px] font-black leading-tight">
-                          {inQueue ? `Your spot — ${peopleAhead} ahead` : `Next chair in ~${waitMins} min`}
+                          {inQueue ? `Your queue — ${peopleAhead} ahead` : `Next chair in ~${waitMins} min`}
                         </div>
                         <div className="text-xs text-black/60">
                           {inQueue
-                            ? 'You can only hold one spot'
+                            ? inQueue === 1
+                              ? 'You can still add one more spot'
+                              : 'You are holding both available spots'
                             : peopleAhead === 0
                               ? 'No wait — walk right in'
                               : `${peopleAhead} ${peopleAhead === 1 ? 'person' : 'people'} waiting`}
@@ -537,7 +549,7 @@ export default function App() {
                         inQueue ? 'bg-emerald-500 text-white' : 'bg-[#C5A059] text-black'
                       )}
                     >
-                      {inQueue ? 'In line' : 'Live'}
+                      {inQueue ? `${inQueue} Spot${inQueue > 1 ? 's' : ''}` : 'Live'}
                     </span>
                   </div>
 
@@ -548,7 +560,7 @@ export default function App() {
                         style={{ width: `${peopleAhead === 0 ? 100 : Math.max(15, 100 - peopleAhead * 22)}%` }}
                       />
                     </div>
-                    <span className="text-[11px] font-bold text-black/50">{inQueue ? 'In Line' : `~${waitMins}m`}</span>
+                    <span className="text-[11px] font-bold text-black/50">{inQueue ? `Queue ${inQueue}` : `~${waitMins}m`}</span>
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-2">
@@ -564,17 +576,21 @@ export default function App() {
                     </button>
                     <button
                       onClick={handleJoinQueue}
-                      disabled={inQueue > 0}
+                      disabled={inQueue >= MAX_QUEUE_SPOTS}
                       className={cx(
                         'rounded-full py-2.5 text-xs font-black uppercase tracking-widest transition-colors',
-                        inQueue ? 'cursor-not-allowed bg-emerald-100 text-emerald-700' : 'bg-[#111111] text-white'
+                        inQueue >= MAX_QUEUE_SPOTS ? 'cursor-not-allowed bg-emerald-100 text-emerald-700' : 'bg-[#111111] text-white'
                       )}
                     >
-                      {inQueue ? '✓ One Spot Only' : '+ Join — One Spot'}
+                      {inQueue >= MAX_QUEUE_SPOTS ? '✓ Max 2' : inQueue === 1 ? '+ 2nd Spot' : '+ Join — 1 Spot'}
                     </button>
                   </div>
                   <div className="mt-3 text-center text-[10px] font-semibold uppercase tracking-wide text-black/40">
-                    {inQueue ? 'You can only join once — one spot per person' : 'Tap join once — you get one spot, no doubles'}
+                    {inQueue === 0
+                      ? 'Tap join once — you can add up to 2 spots'
+                      : inQueue === 1
+                        ? 'You can still add one more spot'
+                        : 'You are holding both available spots'}
                   </div>
                 </div>
 
@@ -599,34 +615,34 @@ export default function App() {
                     <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#C5A059]">Queue Policy</div>
                     <div className="mt-1 text-[18px] font-black leading-tight sm:text-[20px]" style={{ fontFamily: 'Playfair Display, serif' }}>
                       One person.<br />
-                      One spot.<br />
+                      Up to two spots.<br />
                       No doubles.
                     </div>
                     <div className="mt-2 max-w-[220px] text-xs leading-relaxed text-white/60">
-                      Michael's rule keeps it fair — you can only hold one spot at a time.
+                      Michael's rule keeps it fair — you can hold up to two spots at a time.
                     </div>
                   </div>
 
                   <div className="relative mt-4 flex items-center gap-2">
                     <button
                       onClick={handleJoinQueue}
-                      disabled={inQueue >= 2}
+                      disabled={inQueue >= MAX_QUEUE_SPOTS}
                       className={cx(
                         'rounded-full px-3.5 py-2 text-[11px] font-black uppercase tracking-widest transition-colors',
-                        inQueue ? 'cursor-not-allowed bg-emerald-100 text-emerald-900' : 'bg-[#C5A059] text-black'
+                        inQueue >= MAX_QUEUE_SPOTS ? 'cursor-not-allowed bg-emerald-100 text-emerald-900' : 'bg-[#C5A059] text-black'
                       )}
                     >
-                      {inQueue ? '✓ In Queue' : 'Join Once'}
+                      {inQueue >= MAX_QUEUE_SPOTS ? '✓ Maxed' : inQueue ? 'Add Spot' : 'Join Once'}
                     </button>
-                    {inQueue > 0 && <span className="text-[10px] text-white/50">Tap Leave to free spot</span>}
+                    {inQueue > 0 && <span className="text-[10px] text-white/50">Tap Leave to free a spot</span>}
                   </div>
                 </div>
 
                 <div className="relative overflow-hidden rounded-[28px] bg-[#C5A059] p-1">
                   <img src={IMAGES.detailChair} alt="Barber chairs inside the shop" className="h-full w-full rounded-[24px] object-cover" />
                   <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between rounded-full bg-black px-3 py-2 text-white">
-                    <span className="text-[11px] font-black uppercase tracking-widest">One Spot Rule</span>
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs text-black">1</span>
+                    <span className="text-[11px] font-black uppercase tracking-widest">Two Spot Rule</span>
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs text-black">{Math.min(inQueue, 2) || 1}</span>
                   </div>
                 </div>
               </div>
@@ -639,7 +655,7 @@ export default function App() {
         <div className="flex animate-marquee whitespace-nowrap py-3">
           {Array.from({ length: 6 }).map((_, index) => (
             <span key={index} className="mx-6 flex items-center gap-6 text-[13px] font-black uppercase tracking-[0.2em]">
-              <span>One Spot Per Person</span>
+              <span>Up To Two Spots</span>
               <span className="h-1.5 w-1.5 rounded-full bg-[#C5A059]" />
               <span>Cut Right. Stay Sharp.</span>
               <span className="h-1.5 w-1.5 rounded-full bg-white" />
@@ -656,20 +672,20 @@ export default function App() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full bg-[#111111] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-white">
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#C5A059] text-black">✂</span>
-                One Chair • One Spot Per Person • $30 Flat
+                One Chair • Up To Two Spots • $30 Flat
               </div>
               <h2
                 className="mt-4 text-[34px] font-black leading-[0.9] tracking-tight sm:text-[52px]"
                 style={{ fontFamily: 'Playfair Display, serif' }}
               >
                 The classic.<br />
-                <span className="text-[#C5A059] italic">$30. One spot.</span>
+                <span className="text-[#C5A059] italic">$30. Up to 2 spots.</span>
               </h2>
             </div>
 
             <div className="lg:max-w-[500px]">
               <p className="text-[15px] leading-relaxed text-black/60">
-                Michael enforces one spot per person so no one can block the line. Join once, wait your turn, $30 classic.
+                Michael allows up to two queue spots per person so you can still hold a place without crowding the line.
               </p>
               <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#111111] px-4 py-2 text-xs font-bold uppercase tracking-widest text-white">
                 <span
@@ -678,7 +694,9 @@ export default function App() {
                     inQueue ? 'animate-pulse bg-emerald-400' : 'animate-pulse bg-[#C5A059]'
                   )}
                 />
-                {inQueue ? `You're in line • ${peopleAhead} ahead • ${waitMins} min` : `Live: ${peopleAhead} ahead • ${waitMins} min • Join once`}
+                {inQueue
+                  ? `You're in line • ${inQueue} spot${inQueue > 1 ? 's' : ''} • ${waitMins} min`
+                  : `Live: ${peopleAhead} ahead • ${waitMins} min • Up to 2 spots`}
               </div>
             </div>
           </div>
@@ -702,7 +720,7 @@ export default function App() {
                     <div className="mt-3 flex items-center gap-3">
                       <span className="rounded-full bg-white px-4 py-1.5 text-lg font-black text-black">$30</span>
                       <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-widest">
-                        One Spot / Person
+                        Up To 2 Spots / Person
                       </span>
                       <span className="hidden rounded-full bg-[#C5A059] px-3 py-1.5 text-xs font-black uppercase tracking-widest text-black sm:inline-flex">
                         Michael • Owner
@@ -722,7 +740,7 @@ export default function App() {
                         'Precision scissor & clipper classic',
                         'Straight-razor neck cleanup',
                         'Natural edge & sideburns',
-                        'One spot in queue per person',
+                        'Up to two queue spots per person',
                         'Hot lather + brush off',
                       ].map((item) => (
                         <li key={item} className="flex gap-3 text-sm leading-tight text-white/80">
@@ -737,21 +755,21 @@ export default function App() {
 
                   <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur">
                     <div className="text-xs font-black uppercase tracking-widest text-[#C5A059]">
-                      One Spot Only — No Doubles
+                      Up To 2 Spots — No Doubles
                     </div>
                     <p className="mt-2 text-sm text-white/60">
-                      Join once, hold your place. Leave if plans change, then you can rejoin. Prevents line blocking.
+                      Join once, or add a second if needed. Leave if plans change, then you can rejoin.
                     </p>
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <button
                         onClick={handleJoinQueue}
-                        disabled={inQueue >= 2}
+                        disabled={inQueue >= MAX_QUEUE_SPOTS}
                         className={cx(
                           'rounded-full py-2.5 text-xs font-black uppercase tracking-widest transition-colors',
-                          inQueue ? 'cursor-not-allowed bg-white/10 text-white/40' : 'bg-white text-black'
+                          inQueue >= MAX_QUEUE_SPOTS ? 'cursor-not-allowed bg-white/10 text-white/40' : 'bg-white text-black'
                         )}
                       >
-                        {inQueue ? '✓ Already In' : '+ Join Queue'}
+                        {inQueue >= MAX_QUEUE_SPOTS ? '✓ Full' : inQueue === 1 ? '+ 2nd Spot' : '+ Join Queue'}
                       </button>
                       <button
                         onClick={handleLeaveQueue}
@@ -772,14 +790,14 @@ export default function App() {
             <div className="space-y-4">
               <div className="rounded-[28px] border border-black/10 bg-white p-6 sm:p-7">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black uppercase tracking-widest">Live Queue — One Spot Rule</span>
+                  <span className="text-xs font-black uppercase tracking-widest">Live Queue — Two Spot Rule</span>
                   <span
                     className={cx(
                       'rounded-full px-2.5 py-1 text-[11px] font-black',
                       inQueue ? 'bg-emerald-500 text-white' : 'bg-[#111111] text-white'
                     )}
                   >
-                    {inQueue ? "You're In" : `${peopleAhead} Ahead`}
+                    {inQueue === 0 ? `${peopleAhead} Ahead` : `${inQueue} Spot${inQueue > 1 ? 's' : ''}`}
                   </span>
                 </div>
 
@@ -787,21 +805,27 @@ export default function App() {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-2xl font-black leading-none">
-                        {inQueue ? "You're in line" : `${peopleAhead} ${peopleAhead === 1 ? 'person' : 'people'} waiting`}
+                        {inQueue === 0
+                          ? `${peopleAhead} waiting`
+                          : inQueue === 1
+                            ? 'You hold 1 spot'
+                            : 'You hold 2 spots'}
                       </div>
                       <div className="mt-1 text-xs font-semibold text-black/60">
-                        {inQueue ? `One spot only • ${peopleAhead} ahead • ~${waitMins} min` : `Est. wait ~${waitMins} min • One spot per person`}
+                        {inQueue === 0
+                          ? `Est. wait ~${waitMins} min • Up to 2 spots per person`
+                          : `You have ${inQueue} spot${inQueue > 1 ? 's' : ''} • ~${waitMins} min`}
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs font-black uppercase tracking-widest text-black/40">Your Status</div>
+                      <div className="text-xs font-black uppercase tracking-widest text-black/40">Status</div>
                       <div
                         className={cx(
                           'mt-1 rounded-full px-3 py-1 text-[13px] font-black',
                           inQueue ? 'bg-emerald-500 text-white' : 'bg-zinc-200 text-black/60'
                         )}
                       >
-                        {inQueue ? '✓ In Queue' : 'Not In'}
+                        {queueText}
                       </div>
                     </div>
                   </div>
@@ -826,22 +850,22 @@ export default function App() {
                     </button>
                     <button
                       onClick={handleJoinQueue}
-                      disabled={inQueue >= 2}
+                      disabled={inQueue >= MAX_QUEUE_SPOTS}
                       className={cx(
                         'rounded-full py-2.5 text-xs font-black uppercase transition-colors',
-                        inQueue ? 'cursor-not-allowed bg-emerald-50 text-emerald-700' : 'bg-[#C5A059] text-black'
+                        inQueue >= MAX_QUEUE_SPOTS ? 'cursor-not-allowed bg-emerald-50 text-emerald-700' : 'bg-[#C5A059] text-black'
                       )}
                     >
-                      Join
+                      {inQueue >= MAX_QUEUE_SPOTS ? 'Full' : inQueue ? 'Add' : 'Join'}
                     </button>
                   </div>
                 </div>
               </div>
 
               <div className="rounded-[28px] border border-black/5 bg-[#EDE6D6] p-6">
-                <h4 className="text-[16px] font-black leading-tight">One spot per person — why?</h4>
+                <h4 className="text-[16px] font-black leading-tight">Up to two spots — why?</h4>
                 <p className="mt-2 text-[13px] leading-relaxed text-black/60">
-                  Stops someone from spamming the queue. You tap join once, you hold one place. Leave if plans change, then you can rejoin. Keeps it fair on busy Saturdays.
+                  Gives you flexibility without creating a crowding problem. You can join once or add a second spot, then leave when you're done.
                 </p>
               </div>
             </div>
@@ -863,13 +887,13 @@ export default function App() {
                   <div>
                     <div className="text-sm font-black leading-none">Michael — Owner & Barber</div>
                     <div className="mt-1 text-xs leading-tight text-black/60">
-                      “One chair, one spot per person, $30 classic. No one can hold two places — keeps it fair.”
+                      “You can hold up to two spots, but no one can block the whole line.”
                     </div>
                   </div>
                 </div>
               </div>
               <div className="absolute left-6 top-6 rounded-full bg-[#C5A059] px-4 py-2 text-xs font-black uppercase tracking-widest text-black">
-                Meet Michael — One Spot Rule
+                Meet Michael — Max Two Spots
               </div>
             </div>
 
@@ -882,15 +906,15 @@ export default function App() {
                 className="mt-3 text-[32px] font-black leading-[0.95] tracking-tight sm:text-[38px]"
                 style={{ fontFamily: 'Playfair Display, serif' }}
               >
-                One spot.<br /> No <span className="text-[#C5A059]">doubles.</span>
+                Up to two.<br /> No <span className="text-[#C5A059]">crowding.</span>
               </h2>
               <p className="mt-4 text-[15px] leading-relaxed text-black/60">
-                You can only join the queue once until you leave. Tap Join, you hold your place. Tap Leave, it's free. Michael added this so one person can't block the board — fair for everyone on busy days.
+                You can hold up to two spots until you leave. Tap Join, you hold your place. Tap Leave, your spots free up.
               </p>
 
               <div className="mt-8 grid grid-cols-3 gap-3">
                 {[
-                  { key: inQueue ? 'In Line ✓' : 'Tap Join', value: 'One spot only per person' },
+                  { key: inQueue === 0 ? 'Tap Join' : inQueue === 1 ? '1 Spot ✓' : '2 Spots ✓', value: 'Up to two spots per person' },
                   { key: '4.7★ Rated', value: `${reviews.length} walk-in reviews` },
                   { key: '5+ Yrs OC', value: 'Michael • Owner' },
                 ].map((item) => (
@@ -904,13 +928,13 @@ export default function App() {
               <div className="mt-8 flex gap-3">
                 <button
                   onClick={handleJoinQueue}
-                  disabled={inQueue >= 2}
+                  disabled={inQueue >= MAX_QUEUE_SPOTS}
                   className={cx(
                     'flex-1 rounded-full py-3.5 text-[13px] font-black uppercase tracking-widest transition-colors',
-                    inQueue ? 'cursor-not-allowed bg-emerald-100 text-emerald-900' : 'bg-[#111111] text-white'
+                    inQueue >= MAX_QUEUE_SPOTS ? 'cursor-not-allowed bg-emerald-100 text-emerald-900' : 'bg-[#111111] text-white'
                   )}
                 >
-                  {inQueue ? '✓ You\'re In (One Spot)' : 'Join Queue Once'}
+                  {inQueue >= MAX_QUEUE_SPOTS ? '✓ You Have 2 Spots' : inQueue ? 'Add Another Spot' : 'Join Queue'}
                 </button>
                 <button
                   onClick={handleLeaveQueue}
@@ -934,13 +958,13 @@ export default function App() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full bg-[#111111] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-white">
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#C5A059] text-black">★</span>
-                {avgRating.toFixed(1)} Stars • One Spot Rule • Owner Michael
+                {avgRating.toFixed(1)} Stars • Two Spot Rule • Owner Michael
               </div>
               <h2
                 className="mt-4 text-[30px] font-black leading-[0.9] tracking-tight sm:text-[40px]"
                 style={{ fontFamily: 'Playfair Display, serif' }}
               >
-                Real cuts.<br /> <span className="text-[#C5A059] italic">One spot each.</span>
+                Real cuts.<br /> <span className="text-[#C5A059] italic">Up to two spots.</span>
               </h2>
             </div>
 
@@ -1001,24 +1025,24 @@ export default function App() {
 
               <div className="relative">
                 <div className="inline-flex items-center gap-2 rounded-full bg-[#C5A059] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-black">
-                  Owner Michael • One Spot Only • {inQueue ? "You're In" : `${peopleAhead} Ahead`}
+                  Owner Michael • Two Spots Max • {inQueue ? `${inQueue} Active` : `${peopleAhead} Ahead`}
                 </div>
 
                 <h2 className="mt-4 text-[30px] font-black leading-none sm:text-[36px]" style={{ fontFamily: 'Playfair Display, serif' }}>
-                  One spot<br />
-                  <span className="text-[#C5A059]">per person.</span>
+                  Two spots<br />
+                  <span className="text-[#C5A059]">for the line.</span>
                 </h2>
 
                 <div className="mt-6 rounded-[20px] bg-white p-5 text-[#111111]">
                   <div className="flex items-center justify-between">
-                    <div className="text-[13px] font-black uppercase tracking-widest">Live Queue — One Spot Rule</div>
+                    <div className="text-[13px] font-black uppercase tracking-widest">Live Queue — Two Spot Rule</div>
                     <span
                       className={cx(
                         'rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-widest',
                         inQueue ? 'bg-emerald-500 text-white' : 'bg-[#111111] text-white'
                       )}
                     >
-                      {inQueue ? "You: In" : 'Queue Live'}
+                      {inQueue ? 'You: Active' : 'Queue Live'}
                     </span>
                   </div>
 
@@ -1028,19 +1052,23 @@ export default function App() {
                       <span className="font-black">~{waitMins} min wait</span>
                     </div>
                     <div className="mt-2 text-[11px] text-black/50">
-                      {inQueue ? "✓ You hold one spot — can't join again until you leave" : 'Tap Join once to hold your spot — one per person'}
+                      {inQueue === 0
+                        ? 'Tap Join once to hold your spot — up to 2 total'
+                        : inQueue === 1
+                          ? 'You hold 1 spot — you can still add another'
+                          : 'You hold 2 spots — you are at the limit'}
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <button
                         onClick={handleJoinQueue}
-                        disabled={inQueue >= 2}
+                        disabled={inQueue >= MAX_QUEUE_SPOTS}
                         className={cx(
                           'rounded-full py-2.5 text-xs font-black uppercase transition-colors',
-                          inQueue ? 'cursor-not-allowed bg-emerald-50 text-emerald-700' : 'bg-[#111111] text-white'
+                          inQueue >= MAX_QUEUE_SPOTS ? 'cursor-not-allowed bg-emerald-50 text-emerald-700' : 'bg-[#111111] text-white'
                         )}
                       >
-                        {inQueue ? '✓ You\'re In' : 'Join Queue'}
+                        {inQueue >= MAX_QUEUE_SPOTS ? '✓ At Max' : inQueue ? 'Add Spot' : 'Join Queue'}
                       </button>
                       <button
                         onClick={handleLeaveQueue}
@@ -1135,7 +1163,7 @@ export default function App() {
                     <img src="/logo.png" alt="logo" className="h-12 w-12 object-contain" />
                     <div>
                       <div className="text-sm font-black leading-none">Baldy The Barber — Michael</div>
-                      <div className="text-xs text-black/60">4.7★ • One Spot Per Person</div>
+                      <div className="text-xs text-black/60">4.7★ • Up to Two Spots</div>
                       <div className="mt-1 flex items-center gap-1.5 text-xs font-bold">
                         <span
                           className={cx(
@@ -1143,7 +1171,7 @@ export default function App() {
                             inQueue ? 'bg-emerald-500 text-white' : 'bg-[#111111] text-white'
                           )}
                         >
-                          {inQueue ? "You're In ✓" : `${peopleAhead} ahead`}
+                          {inQueue ? `${inQueue} Spot${inQueue > 1 ? 's' : ''} ✓` : `${peopleAhead} ahead`}
                         </span>
                         <span className="text-black/60">~{waitMins} min</span>
                       </div>
@@ -1153,20 +1181,20 @@ export default function App() {
               </div>
 
               <div className="mt-auto p-6 sm:p-7">
-                <h3 className="text-[16px] font-black">One Spot Per Person — Fair Line</h3>
+                <h3 className="text-[16px] font-black">Up To Two Spots — Fair Line</h3>
                 <p className="mt-2 text-sm text-black/60">
-                  Join once, hold one spot. Can't double-book. Leave if you need to, then rejoin. Keeps Saturdays fair.
+                  Join once, or add a second spot. Can't double-book beyond the limit. Leave if you need to, then rejoin.
                 </p>
                 <div className="mt-4 flex gap-2">
                   <button
                     onClick={handleJoinQueue}
-                    disabled={inQueue >= 2}
+                    disabled={inQueue >= MAX_QUEUE_SPOTS}
                     className={cx(
                       'inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-black uppercase tracking-widest',
-                      inQueue ? 'cursor-not-allowed bg-emerald-100 text-emerald-700' : 'bg-[#111111] text-white'
+                      inQueue >= MAX_QUEUE_SPOTS ? 'cursor-not-allowed bg-emerald-100 text-emerald-700' : 'bg-[#111111] text-white'
                     )}
                   >
-                    {inQueue ? '✓ You\'re In Line' : 'Join Queue — Once Only'}
+                    {inQueue >= MAX_QUEUE_SPOTS ? '✓ At Max' : inQueue ? 'Add Another Spot' : 'Join Queue — Up To 2'}
                   </button>
                   <button
                     onClick={handleLeaveQueue}
@@ -1197,10 +1225,10 @@ export default function App() {
               <img src="/logo.png" alt="logo" className="hidden h-16 w-16 rounded-2xl bg-white object-contain p-1 shadow-lg sm:block" />
               <div>
                 <div className="text-[12px] font-black uppercase tracking-[0.18em] text-black/60">
-                  One Spot Per Person • {inQueue ? "You're In" : 'Join Once'}
+                  Up To Two Spots • {inQueue ? 'You Are In' : 'Join Up To 2'}
                 </div>
                 <div className="text-[24px] font-black leading-none tracking-tight sm:text-[30px]" style={{ fontFamily: 'Playfair Display, serif' }}>
-                  {inQueue ? 'You hold one spot.' : 'One tap. One spot.'}
+                  {inQueue ? `You hold ${inQueue} spot${inQueue > 1 ? 's' : ''}.` : 'One tap. Two max.'}
                 </div>
               </div>
             </div>
@@ -1208,13 +1236,13 @@ export default function App() {
             <div className="relative flex w-full flex-wrap gap-3 lg:w-auto">
               <button
                 onClick={handleJoinQueue}
-                disabled={inQueue >= 2}
+                disabled={inQueue >= MAX_QUEUE_SPOTS}
                 className={cx(
                   'flex-1 rounded-full px-8 py-4 text-sm font-black uppercase tracking-widest transition-colors lg:flex-none',
-                  inQueue ? 'cursor-not-allowed bg-emerald-100 text-emerald-900' : 'bg-[#111111] text-white'
+                  inQueue >= MAX_QUEUE_SPOTS ? 'cursor-not-allowed bg-emerald-100 text-emerald-900' : 'bg-[#111111] text-white'
                 )}
               >
-                {inQueue ? '✓ In Queue' : 'Join Queue'}
+                {inQueue >= MAX_QUEUE_SPOTS ? '✓ Maxed' : inQueue ? 'Add Spot' : 'Join Queue'}
               </button>
               <button
                 onClick={handleLeaveQueue}
@@ -1242,19 +1270,19 @@ export default function App() {
                     BALDY THE BARBER
                   </div>
                   <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">
-                    Michael • One Spot Rule • 4.7★
+                    Michael • Up To Two Spots • 4.7★
                   </div>
                 </div>
               </div>
               <p className="mt-4 max-w-[360px] text-sm leading-relaxed text-white/60">
-                One chair, $30 classic, one spot per person in queue. Walk-ins only, Route 611. Fair line, sharp cut.
+                One chair, $30 classic, up to two queue spots per person. Walk-ins only, Route 611. Fair line, sharp cut.
               </p>
             </div>
 
             <div>
               <div className="text-xs font-black uppercase tracking-widest text-white/40">Queue Rule</div>
               <div className="mt-4 text-sm leading-relaxed text-white/70">
-                You can only join once until you leave. Prevents double booking, keeps wait honest.
+                You can hold up to two spots until you leave. Prevents double booking, keeps the wait honest.
               </div>
             </div>
 
@@ -1279,7 +1307,7 @@ export default function App() {
             <div className="rounded-2xl bg-white p-5 text-[#111111]">
               <div className="text-xs font-black uppercase tracking-widest">Queue Status</div>
               <div className="mt-2 font-black">
-                {inQueue ? "✓ You're in line — One spot" : 'Not in line — Join once'}
+                {inQueue ? `✓ You're in line — ${inQueue} spot${inQueue > 1 ? 's' : ''}` : 'Not in line — Up to 2'}
               </div>
               <div className="mt-1 text-xs text-black/60">
                 {peopleAhead} ahead • ~{waitMins} min • 9935 Stephen Decatur Hwy
@@ -1291,13 +1319,13 @@ export default function App() {
                   inQueue ? 'bg-zinc-100 text-black' : 'bg-[#111111] text-white'
                 )}
               >
-                {inQueue ? 'Leave My Spot' : 'Join Queue — One Spot Only'}
+                {inQueue ? 'Leave My Spot' : 'Join Queue — Up To 2'}
               </button>
             </div>
           </div>
 
           <div className="pt-6 text-xs text-white/40">
-            © {new Date().getFullYear()} Baldy The Barber — Owner Michael • One Spot Per Person • $30 Classic
+            © {new Date().getFullYear()} Baldy The Barber — Owner Michael • Up To Two Spots Per Person • $30 Classic
           </div>
         </div>
       </footer>
@@ -1307,7 +1335,7 @@ export default function App() {
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setInfoOpen(false)} />
           <div className="relative max-h-[90vh] w-full overflow-auto rounded-t-[28px] bg-[#FDF8F0] shadow-2xl sm:max-w-[520px] sm:rounded-[28px]">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-black/10 bg-[#FDF8F0] px-6 py-5">
-              <div className="font-black">One Spot Per Person — How It Works</div>
+              <div className="font-black">Two Spot Rule — How It Works</div>
               <button
                 onClick={() => setInfoOpen(false)}
                 className="flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-white"
@@ -1320,25 +1348,25 @@ export default function App() {
 
             <div className="space-y-4 p-6 text-sm leading-relaxed">
               <p>
-                <b>Rule:</b> You can only hold one spot at a time. Tap Join once, you're in. Tap again and it tells you you're already in. Leave to free your spot.
+                <b>Rule:</b> You can hold up to two spots at a time. Tap Join once or twice, then keep your place. Leave to free your spots.
               </p>
               <p>
-                <b>Why:</b> Stops someone from spamming the board and jumping line. Keeps it fair — Michael sees real count.
+                <b>Why:</b> Keeps the line fair while still giving people flexibility on busy days.
               </p>
               <p>
-                <b>Current:</b> {peopleAhead} people ahead, ~{waitMins} min. {inQueue ? 'You have 1 spot held.' : "You're not in line yet — tap Join once."}
+                <b>Current:</b> {peopleAhead} people ahead, ~{waitMins} min. {inQueue ? `You have ${inQueue} spot${inQueue > 1 ? 's' : ''} held.` : "You're not in line yet — tap Join once or twice."}
               </p>
 
               <div className="grid grid-cols-2 gap-2 pt-2">
                 <button
                   onClick={handleJoinQueue}
-                  disabled={inQueue >= 2}
+                  disabled={inQueue >= MAX_QUEUE_SPOTS}
                   className={cx(
                     'rounded-full py-3 text-xs font-black uppercase',
-                    inQueue ? 'cursor-not-allowed bg-zinc-100 text-black/30' : 'bg-[#111111] text-white'
+                    inQueue >= MAX_QUEUE_SPOTS ? 'cursor-not-allowed bg-zinc-100 text-black/30' : 'bg-[#111111] text-white'
                   )}
                 >
-                  {inQueue ? 'Already In' : 'Join'}
+                  {inQueue >= MAX_QUEUE_SPOTS ? 'Already Full' : inQueue ? 'Add Spot' : 'Join'}
                 </button>
                 <button
                   onClick={handleLeaveQueue}
