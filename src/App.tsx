@@ -1,24 +1,60 @@
-import { useState, useEffect } from 'react'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
 
-type Review = { id: number; name: string; text: string; stars: number; tag: string }
+type Review = {
+  id: number
+  name: string
+  text: string
+  stars: number
+  tag: string
+}
 
 const INITIAL_REVIEWS: Review[] = [
-  { id: 1, name: "Mike R.", text: "Simplest shop in OC and that's why I love it. No app, no BS. Walk in, $30, best classic I've had. Michael remembers how I like it every time.", stars: 5, tag: "Google • Walk-in • 2mo ago" },
-  { id: 2, name: "J. Torres", text: "Michael's got over 5 years in Ocean City and it shows. Clean, quick, $30 flat. Walked in on a Tuesday, no wait.", stars: 5, tag: "Google • Walk-in • 1mo ago" },
-  { id: 3, name: "Carlos D.", text: "One chair, one cut — done right. That's the whole point. No upsell. $30, in and out sharp. New favorite.", stars: 4, tag: "Google • Walk-in • 3w ago" },
+  {
+    id: 1,
+    name: 'Mike R.',
+    text:
+      "Simplest shop in OC and that's why I love it. No app, no BS. Walk in, $30, best classic I've had. Michael remembers how I like it every time.",
+    stars: 5,
+    tag: 'Google • Walk-in • 1mo ago',
+  },
+  {
+    id: 2,
+    name: 'J. Torres',
+    text:
+      "Michael's got over 5 years in Ocean City and it shows. Clean, quick, $30 flat. Walked in on a Tuesday, no wait.",
+    stars: 5,
+    tag: 'Google • Walk-in • 2w ago',
+  },
+  {
+    id: 3,
+    name: 'Carlos D.',
+    text:
+      "One chair, one cut — done right. That's the whole point. No upsell. $30, in and out sharp. New favorite.",
+    stars: 4,
+    tag: 'Google • Walk-in • 3w ago',
+  },
 ]
 
-// ============================================================
-// PHOTOS — put these 3 files in the public/ folder EXACTLY:
-//   public/shop-hero.jpg      = storefront building
-//   public/shop-detail.jpg    = interior chairs
-//   public/michael.jpg        = Michael portrait
-// ============================================================
-
 const IMAGES = {
-  heroShop: "/shop-hero.jpg",
-  detailChair: "/shop-detail.jpg",
-  michaelPortrait: "/michael.jpg",
+  heroShop: '/shop-hero.jpg',
+  detailChair: '/shop-detail.jpg',
+  michaelPortrait: '/michael.jpg',
+}
+
+const NAV_ITEMS = [
+  { label: 'The Cut', id: 'services' },
+  { label: 'About Michael', id: 'about' },
+  { label: 'Reviews', id: 'reviews' },
+  { label: 'Hours & Location', id: 'visit' },
+]
+
+const cx = (...classes: Array<string | false | null | undefined>) =>
+  classes.filter(Boolean).join(' ')
+
+const scrollTo = (id: string) => {
+  if (typeof document === 'undefined') return
+  const element = document.getElementById(id)
+  element?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 export default function App() {
@@ -27,172 +63,258 @@ export default function App() {
   const [reviewOpen, setReviewOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [scrolled, setScrolled] = useState(false)
+  const [nowMin, setNowMin] = useState<number>(() => new Date().getMinutes())
 
   const [inQueue, setInQueue] = useState<number>(() => {
-  try {
-    const saved = localStorage.getItem('baldy_in_queue')
-    if (saved === '1') return 1 // migrate existing users
-    return Math.min(2, Math.max(0, parseInt(saved || '0', 10)))
-  } catch {
-    return 0
-  }
-})
-  const [nowMin, setNowMin] = useState<number>(() => new Date().getMinutes())
-  const [peopleAhead, setPeopleAhead] = useState(0)
+    if (typeof window === 'undefined') return 0
 
-  // Reviews
-  const [reviews, setReviews] = useState<Review[]>(() => {
     try {
-      const saved = localStorage.getItem('baldy_reviews')
-      return saved ? JSON.parse(saved) : INITIAL_REVIEWS
-    } catch { return INITIAL_REVIEWS }
+      const saved = window.localStorage.getItem('baldy_in_queue')
+      if (saved === '1') return 1
+      const parsed = Number.parseInt(saved ?? '0', 10)
+      return Number.isFinite(parsed) ? Math.min(2, Math.max(0, parsed)) : 0
+    } catch {
+      return 0
+    }
   })
-  const [newStars, setNewStars] = useState(5)
-  const [newName, setNewName] = useState("")
-  const [newText, setNewText] = useState("")
 
-  const avgRating = reviews.reduce((sum, r) => sum + r.stars, 0) / reviews.length
+  const [reviews, setReviews] = useState<Review[]>(() => {
+    if (typeof window === 'undefined') return INITIAL_REVIEWS
+
+    try {
+      const saved = window.localStorage.getItem('baldy_reviews')
+      return saved ? JSON.parse(saved) : INITIAL_REVIEWS
+    } catch {
+      return INITIAL_REVIEWS
+    }
+  })
+
+  const [newStars, setNewStars] = useState(5)
+  const [newName, setNewName] = useState('')
+  const [newText, setNewText] = useState('')
+
+  const peopleAhead = useMemo(() => (inQueue ? 2 : 3), [inQueue])
+
+  const avgRating = useMemo(
+    () => (reviews.length ? reviews.reduce((sum, review) => sum + review.stars, 0) / reviews.length : 0),
+    [reviews]
+  )
+
+  const waitMins = useMemo(() => {
+    const base = peopleAhead * 8
+    return inQueue ? Math.max(5, base - 4) : Math.max(5, base)
+  }, [inQueue, peopleAhead])
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10)
     window.addEventListener('scroll', onScroll)
-    const iv = setInterval(() => setNowMin(new Date().getMinutes()), 30000)
-    return () => { window.removeEventListener('scroll', onScroll); clearInterval(iv) }
+
+    const intervalId = window.setInterval(() => setNowMin(new Date().getMinutes()), 30000)
+
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.clearInterval(intervalId)
+    }
   }, [])
 
   useEffect(() => {
-    if (toast) {
-      const t = setTimeout(() => setToast(null), 3400)
-      return () => clearTimeout(t)
-    }
+    if (!toast) return
+
+    const timeoutId = window.setTimeout(() => setToast(null), 3400)
+    return () => window.clearTimeout(timeoutId)
   }, [toast])
-  
-    useEffect(() => {
-  try {
-    localStorage.setItem('baldy_in_queue', String(inQueue))
-  } catch {}
-}, [inQueue])
+
   useEffect(() => {
-    try { localStorage.setItem('baldy_in_queue', inQueue ? '1' : '0') } catch {}
+    try {
+      window.localStorage.setItem('baldy_in_queue', String(inQueue))
+    } catch {
+      // no-op
+    }
   }, [inQueue])
 
-  const handleJoinQueue = () => {
-  if (inQueue >= 2) {
-    setToast("You're already holding both queue spots.")
-    return
-  }
-
-  const nextSpots = inQueue + 1
-  setInQueue(nextSpots)
-  setToast(
-    nextSpots === 2
-      ? "You're holding 2 spots in line."
-      : `You're in line! ${peopleAhead === 0 ? "No one ahead" : `${peopleAhead} ahead`} — Michael will see you soon.`
-}
-
-const handleLeaveQueue = () => {
-  if (inQueue <= 0) {
-    setToast("You're not in the queue right now.")
-    return
-  }
-
-  const remainingSpots = inQueue - 1
-  setInQueue(remainingSpots)
-  setToast(
-    remainingSpots === 0
-      ? "You left the queue."
-      : "One queue spot removed — you still have 1 spot."
-  )
-}
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('baldy_reviews', JSON.stringify(reviews))
+    } catch {
+      // no-op
     }
-    setInQueue(false)
-    setToast("You left the queue — tap Join again if you change your mind.")
+  }, [reviews])
+
+  const handleJoinQueue = () => {
+    if (inQueue >= 2) {
+      setToast("You're already holding both queue spots.")
+      return
+    }
+
+    const nextSpots = inQueue + 1
+    setInQueue(nextSpots)
+
+    if (nextSpots === 2) {
+      setToast("You're holding 2 spots in line.")
+      return
+    }
+
+    setToast(
+      peopleAhead === 0
+        ? "You're in line! No one ahead — Michael will see you soon."
+        : `You're in line! ${peopleAhead} ahead — Michael will see you soon.`
+    )
   }
 
-  const handleAddReview = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newName.trim() || !newText.trim()) return
+  const handleLeaveQueue = () => {
+    if (inQueue <= 0) {
+      setToast("You're not in the queue right now.")
+      return
+    }
 
-    const r: Review = {
+    const remainingSpots = inQueue - 1
+    setInQueue(remainingSpots)
+
+    setToast(
+      remainingSpots === 0 ? 'You left the queue.' : 'One queue spot removed — you still have 1 spot.'
+    )
+  }
+
+  const handleAddReview = (event: FormEvent) => {
+    event.preventDefault()
+
+    const name = newName.trim()
+    const text = newText.trim()
+
+    if (!name || !text) return
+
+    const review: Review = {
       id: Date.now(),
-      name: newName.trim(),
-      text: newText.trim(),
+      name,
+      text,
       stars: newStars,
       tag: 'Google • Walk-in • just now',
     }
 
-    setReviews(prev => [r, ...prev])
-    setNewName("")
-    setNewText("")
+    setReviews((current) => [review, ...current])
+    setNewName('')
+    setNewText('')
     setNewStars(5)
     setReviewOpen(false)
-    setToast(`Thanks ${r.name}! Review added — ${r.stars} stars`)
+    setToast(`Thanks ${review.name}! Review added — ${review.stars} stars`)
   }
 
-  useEffect(() => {
-    try { localStorage.setItem('baldy_join_count', String(joinCount)) } catch {}
-  }, [joinCount])
+  const handleShare = async () => {
+    const url = typeof window !== 'undefined' ? window.location.href : ''
+
+    try {
+      if (navigator.clipboard && url) {
+        await navigator.clipboard.writeText(url)
+      }
+      setToast('Link copied')
+    } catch {
+      setToast('Share link available in your browser')
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-[#FDF8F0] text-[#111111] selection:bg-[#C5A059] selection:text-white" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-      {/* Top Bar */}
+    <div
+      className="min-h-screen bg-[#FDF8F0] text-[#111111] selection:bg-[#C5A059] selection:text-white"
+      style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+    >
       <div className="bg-[#111111] text-[#FDF8F0] text-[11px] sm:text-xs tracking-widest uppercase font-semibold">
-        <div className="max-w-[1400px] mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-2 px-4 py-2.5">
           <div className="flex items-center gap-4 sm:gap-6">
-            <a href="tel:5136384928" className="flex items-center gap-2 hover:text-[#C5A059] transition-colors">
-              <span className="w-5 h-5 rounded-full bg-[#C5A059] flex items-center justify-center text-[#111111] text-[10px]">✂</span>
+            <a href="tel:5136384928" className="flex items-center gap-2 transition-colors hover:text-[#C5A059]">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#C5A059] text-[10px] text-[#111111]">
+                ✂
+              </span>
               513-638-4928
             </a>
-            <span className="hidden md:inline-flex items-center gap-2 opacity-80">
-              <span className="w-1 h-1 bg-[#C5A059] rounded-full" />
+            <span className="hidden items-center gap-2 opacity-80 md:inline-flex">
+              <span className="h-1 w-1 rounded-full bg-[#C5A059]" />
               9935 Stephen Decatur Hwy, Ocean City, MD 21842
             </span>
           </div>
+
           <div className="flex items-center gap-2 sm:gap-3">
-            <span className="inline-flex items-center gap-2 tracking-[0.18em]">Owner: Michael • Walk-Ins Only</span>
-            <span className="w-1 h-1 bg-white/30 rounded-full hidden sm:block" />
-            <span className="bg-[#C5A059] text-black px-2.5 py-1 rounded-full text-[10px] tracking-widest">4.7★ • Over 5 Years • ONE SPOT RULE</span>
+            <span className="inline-flex items-center gap-2 tracking-[0.18em]">
+              Owner: Michael • Walk-Ins Only
+            </span>
+            <span className="hidden h-1 w-1 rounded-full bg-white/30 sm:block" />
+            <span className="rounded-full bg-[#C5A059] px-2.5 py-1 text-[10px] tracking-widest text-black">
+              4.7★ • Over 5 Years • ONE SPOT RULE
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Nav */}
-      <nav className={`sticky top-0 z-40 backdrop-blur-xl border-b transition-all ${scrolled ? 'bg-[#FDF8F0]/90 border-black/10 shadow-sm' : 'bg-[#FDF8F0] border-black/5'}`}>
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-[72px] sm:h-[80px]">
-            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-3 shrink-0">
-              <img src="/logo.png" alt="Baldy The Barber Logo" className="w-[68px] h-[68px] sm:w-[78px] sm:h-[78px] object-contain -my-1 drop-shadow-sm" />
-              <div className="hidden sm:block text-left leading-none">
-                <div className="text-[11px] tracking-[0.2em] font-bold text-[#C5A059]">OCEAN CITY, MD • MICHAEL</div>
-                <div className="text-[9px] tracking-widest text-black/60 font-semibold mt-1">ONE CHAIR • ONE SPOT IN QUEUE • CUT RIGHT.</div>
+      <nav
+        className={cx(
+          'sticky top-0 z-40 border-b backdrop-blur-xl transition-all',
+          scrolled ? 'border-black/10 bg-[#FDF8F0]/90 shadow-sm' : 'border-black/5 bg-[#FDF8F0]'
+        )}
+      >
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8">
+          <div className="flex h-[72px] items-center justify-between sm:h-[80px]">
+            <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex shrink-0 items-center gap-3">
+              <img
+                src="/logo.png"
+                alt="Baldy The Barber Logo"
+                className="-my-1 h-[68px] w-[68px] object-contain drop-shadow-sm sm:h-[78px] sm:w-[78px]"
+              />
+              <div className="hidden text-left leading-none sm:block">
+                <div className="text-[11px] font-bold tracking-[0.2em] text-[#C5A059]">
+                  OCEAN CITY, MD • MICHAEL
+                </div>
+                <div className="mt-1 text-[9px] font-semibold tracking-widest text-black/60">
+                  ONE CHAIR • ONE SPOT IN QUEUE • CUT RIGHT.
+                </div>
               </div>
             </button>
 
-            <div className="hidden lg:flex items-center gap-8">
-              {[
-                { label: 'The Cut', id: 'services' },
-                { label: 'About Michael', id: 'about' },
-                { label: 'Reviews', id: 'reviews' },
-                { label: 'Hours & Location', id: 'visit' },
-              ].map(item => (
-                <button key={item.id} onClick={() => scrollTo(item.id)} className="text-[13px] font-semibold tracking-widest uppercase text-black/70 hover:text-black transition-colors relative group">
+            <div className="hidden items-center gap-8 lg:flex">
+              {NAV_ITEMS.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => scrollTo(item.id)}
+                  className="group relative text-[13px] font-semibold uppercase tracking-widest text-black/70 transition-colors hover:text-black"
+                >
                   {item.label}
-                  <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-[#C5A059] group-hover:w-full transition-all duration-300" />
+                  <span className="absolute -bottom-1 left-0 h-0.5 w-0 bg-[#C5A059] transition-all duration-300 group-hover:w-full" />
                 </button>
               ))}
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
-              <a href="tel:5136384928" className="hidden sm:inline-flex items-center gap-2 text-[13px] font-bold tracking-widest uppercase px-5 py-3 rounded-full border border-black/15 hover:bg-black hover:text-white transition-colors">
+              <a
+                href="tel:5136384928"
+                className="hidden items-center gap-2 rounded-full border border-black/15 px-5 py-3 text-[13px] font-bold uppercase tracking-widest transition-colors hover:bg-black hover:text-white sm:inline-flex"
+              >
                 Call Michael
               </a>
-              <button onClick={() => scrollTo('visit')} className="inline-flex items-center gap-2 bg-[#111111] text-white text-[13px] font-bold tracking-widest uppercase px-5 sm:px-7 py-3 sm:py-3.5 rounded-full hover:bg-black/90 transition-colors">
-                {inQueue ? "✓ You're In Line" : "Walk In Today"}
-                <span className={`hidden sm:inline-flex w-2 h-2 rounded-full ${inQueue ? 'bg-[#C5A059] animate-pulse' : 'bg-emerald-400 animate-pulse'}`} />
+              <button
+                onClick={() => scrollTo('visit')}
+                className="inline-flex items-center gap-2 rounded-full bg-[#111111] px-5 py-3 text-[13px] font-bold uppercase tracking-widest text-white sm:px-7 sm:py-3.5"
+              >
+                {inQueue ? "✓ You're In Line" : 'Walk In Today'}
+                <span
+                  className={cx(
+                    'hidden h-2 w-2 rounded-full sm:inline-flex',
+                    inQueue ? 'bg-[#C5A059] animate-pulse' : 'bg-emerald-400 animate-pulse'
+                  )}
+                />
               </button>
-              <button onClick={() => setMobileMenu(!mobileMenu)} className="lg:hidden w-11 h-11 rounded-full border border-black/10 flex items-center justify-center bg-white">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  {mobileMenu ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /> : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />}
+              <button
+                onClick={() => setMobileMenu((prev) => !prev)}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-black/10 bg-white lg:hidden"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {mobileMenu ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  ) : (
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 6h16M4 12h16M4 18h16"
+                    />
+                  )}
                 </svg>
               </button>
             </div>
@@ -200,29 +322,58 @@ const handleLeaveQueue = () => {
         </div>
 
         {mobileMenu && (
-          <div className="lg:hidden border-t border-black/10 bg-[#FDF8F0] px-4 py-6 space-y-1">
-            {[
-              { label: 'The $30 Classic Cut', id: 'services' },
-              { label: 'About Michael', id: 'about' },
-              { label: 'Reviews — 4.7★', id: 'reviews' },
-              { label: 'Visit Us', id: 'visit' },
-            ].map(item => (
-              <button key={item.id} onClick={() => scrollTo(item.id)} className="w-full text-left py-3 text-sm font-semibold tracking-widest uppercase border-b border-black/5 last:border-0">
-                {item.label}
-              </button>
-            ))}
-            <div className="mt-4 bg-[#111111] text-white rounded-2xl p-4">
+          <div className="border-t border-black/10 bg-[#FDF8F0] px-4 py-6 lg:hidden">
+            <div className="space-y-1">
+              {[
+                { label: 'The $30 Classic Cut', id: 'services' },
+                { label: 'About Michael', id: 'about' },
+                { label: 'Reviews — 4.7★', id: 'reviews' },
+                { label: 'Visit Us', id: 'visit' },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    scrollTo(item.id)
+                    setMobileMenu(false)
+                  }}
+                  className="w-full border-b border-black/5 py-3 text-left text-sm font-semibold uppercase tracking-widest last:border-0"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 rounded-2xl bg-[#111111] p-4 text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-[10px] tracking-widest uppercase font-bold text-white/60">Live Queue — One Spot Only</div>
-                  <div className="font-black text-sm">{peopleAhead} ahead • {inQueue ? "You're in line ✓" : "Not in line"} • ~{waitMins} min</div>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+                    Live Queue — One Spot Only
+                  </div>
+                  <div className="text-sm font-black">
+                    {peopleAhead} ahead • {inQueue ? "You're in line ✓" : 'Not in line'} • ~{waitMins} min
+                  </div>
                 </div>
               </div>
+
               <div className="mt-3 grid grid-cols-2 gap-2">
-                <button onClick={handleJoinQueue} disabled={inQueue} className={`rounded-full px-4 py-2.5 text-xs font-black uppercase transition-colors ${inQueue ? 'bg-white/10 text-white/40 cursor-not-allowed' : 'bg-[#C5A059] text-black'}`}>
-                  {inQueue ? "✓ In Line" : "+ Join"}
+                <button
+                  onClick={handleJoinQueue}
+                  disabled={inQueue >= 2}
+                  className={cx(
+                    'rounded-full px-4 py-2.5 text-xs font-black uppercase transition-colors',
+                    inQueue ? 'cursor-not-allowed bg-white/10 text-white/40' : 'bg-white text-black'
+                  )}
+                >
+                  {inQueue ? '✓ In Line' : '+ Join'}
                 </button>
-                <button onClick={handleLeaveQueue} disabled={!inQueue} className={`rounded-full px-4 py-2.5 text-xs font-black uppercase transition-colors ${!inQueue ? 'bg-white/5 text-white/30 cursor-not-allowed' : 'bg-white text-black'}`}>
+                <button
+                  onClick={handleLeaveQueue}
+                  disabled={!inQueue}
+                  className={cx(
+                    'rounded-full px-4 py-2.5 text-xs font-black uppercase transition-colors',
+                    !inQueue ? 'cursor-not-allowed bg-white/5 text-white/30' : 'bg-[#C5A059] text-black'
+                  )}
+                >
                   Leave
                 </button>
               </div>
@@ -231,150 +382,251 @@ const handleLeaveQueue = () => {
         )}
       </nav>
 
-      {/* Hero */}
       <section className="relative overflow-hidden">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-6 lg:gap-8 py-6 sm:py-8 lg:py-10">
-            <div className="relative bg-[#0B0B0C] rounded-[28px] sm:rounded-[32px] overflow-hidden p-6 sm:p-10 lg:p-12 text-white flex flex-col min-h-[560px] sm:min-h-[620px]">
-              <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: `repeating-linear-gradient(-45deg, transparent 0 12px, white 12px 13px)` }} />
-              <div className="absolute top-0 right-0 w-[420px] h-[420px] bg-[#C5A059]/20 blur-[90px] rounded-full -translate-y-1/2 translate-x-1/3" />
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8">
+          <div className="grid gap-6 py-6 sm:py-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8 lg:py-10">
+            <div className="relative flex min-h-[560px] flex-col overflow-hidden rounded-[28px] bg-[#0B0B0C] p-6 text-white sm:min-h-[620px] sm:p-10 lg:p-12">
+              <div
+                className="absolute inset-0 opacity-[0.05]"
+                style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent 0 12px, white 12px 13px)' }}
+              />
+              <div className="absolute -translate-y-1/2 translate-x-1/3 rounded-full bg-[#C5A059]/20 blur-[90px]" />
 
               <div className="relative">
-                <div className="flex flex-wrap items-center gap-2.5 mb-6">
-                  <span className="inline-flex items-center gap-2 bg-[#C5A059] text-black border border-[#C5A059] rounded-full px-3.5 py-1.5">
-                    <span className="w-2 h-2 bg-black rounded-full animate-pulse" />
-                    <span className="text-[11px] font-black tracking-[0.18em] uppercase">Walk-Ins Only • One Spot Per Person</span>
+                <div className="mb-6 flex flex-wrap items-center gap-2.5">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-[#C5A059] bg-[#C5A059] px-3.5 py-1.5 text-black">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-black" />
+                    <span className="text-[11px] font-black uppercase tracking-[0.18em]">
+                      Walk-Ins Only • One Spot Per Person
+                    </span>
                   </span>
-                  <span className="inline-flex items-center bg-white/10 backdrop-blur border border-white/10 rounded-full px-3 py-1.5 text-[11px] font-bold tracking-[0.15em] uppercase text-white/80">
+                  <span className="inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-white/80 backdrop-blur">
                     4.7★ • Over 5 Yrs • Michael
                   </span>
                 </div>
 
-                <div className="mb-4 inline-flex rotate-[-1.5deg] bg-white text-black px-3 py-1 rounded-full text-[11px] font-black tracking-widest uppercase">
+                <div className="mb-4 inline-flex rotate-[-1.5deg] rounded-full bg-white px-3 py-1 text-[11px] font-black uppercase tracking-widest text-black">
                   Motto: stay sharp for every season.
                 </div>
 
                 <h1 className="leading-[0.88] tracking-tight" style={{ fontFamily: 'Playfair Display, serif' }}>
-                  <span className="block text-[42px] sm:text-[60px] lg:text-[66px] font-black">BEST</span>
-                  <span className="block text-[42px] sm:text-[60px] lg:text-[66px] font-black text-[#C5A059] italic">BARBER</span>
-                  <span className="block text-[42px] sm:text-[60px] lg:text-[66px] font-black">IN WEST.</span>
-                  <span className="block text-[42px] sm:text-[60px] lg:text-[66px] font-black">OC <span className="text-[#C5A059]">SPOT.</span></span>
+                  <span className="block text-[42px] font-black sm:text-[60px] lg:text-[66px]">BEST</span>
+                  <span className="block text-[42px] font-black italic text-[#C5A059] sm:text-[60px] lg:text-[66px]">
+                    BARBER
+                  </span>
+                  <span className="block text-[42px] font-black sm:text-[60px] lg:text-[66px]">IN WEST.</span>
+                  <span className="block text-[42px] font-black sm:text-[60px] lg:text-[66px]">
+                    OC <span className="text-[#C5A059]">SPOT.</span>
+                  </span>
                 </h1>
 
-                <p className="mt-6 text-[15px] sm:text-[16px] leading-relaxed text-white/70 max-w-[520px]">
-                  Michael's rule: <span className="text-white font-bold">one person, one spot in line.</span> No double bookings. Join once, wait your turn, get your $30 classic.
+                <p className="mt-6 max-w-[520px] text-[15px] leading-relaxed text-white/70 sm:text-[16px]">
+                  Michael's rule: <span className="font-bold text-white">one person, one spot in line.</span> No double bookings. Join once, wait your turn, get your $30 classic.
                 </p>
 
                 <div className="mt-8 flex flex-wrap gap-3">
-                  <button onClick={handleJoinQueue} disabled={inQueue >= 2} className={`inline-flex items-center gap-2 font-extrabold tracking-widest uppercase text-[13px] px-7 py-4 rounded-full transition-colors ${inQueue ? 'bg-emerald-500/20 text-emerald-200 cursor-not-allowed' : 'bg-[#C5A059] text-black hover:bg-[#dcb777]'}`}>
-                    {inQueue ? "✓ You're In The Queue (One Spot Only)" : "Join Queue — One Spot Only"}
-                    {!inQueue && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>}
+                  <button
+                    onClick={handleJoinQueue}
+                    disabled={inQueue >= 2}
+                    className={cx(
+                      'inline-flex items-center gap-2 rounded-full px-7 py-4 text-[13px] font-extrabold uppercase tracking-widest transition-colors',
+                      inQueue
+                        ? 'cursor-not-allowed bg-emerald-100 text-emerald-900'
+                        : 'bg-[#C5A059] text-black hover:bg-[#d4b77d]'
+                    )}
+                  >
+                    {inQueue ? "✓ You're In The Queue (One Spot Only)" : 'Join Queue — One Spot Only'}
+                    {!inQueue && (
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                      </svg>
+                    )}
                   </button>
-                  <a href="tel:5136384928" className="inline-flex items-center gap-2 bg-white text-black font-extrabold tracking-widest uppercase text-[13px] px-7 py-4 rounded-full hover:bg-zinc-100 transition-colors">
+
+                  <a
+                    href="tel:5136384928"
+                    className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-4 text-[13px] font-extrabold uppercase tracking-widest text-black transition-colors hover:bg-zinc-100"
+                  >
                     Call Michael — 513-638-4928
                   </a>
                 </div>
 
-                <div className="mt-8 grid grid-cols-3 gap-3 max-w-[520px]">
+                <div className="mt-8 grid max-w-[520px] grid-cols-3 gap-3">
                   {[
-                    { value: inQueue ? "IN LINE ✓" : "NOT IN LINE", label: "Your Status • One Spot" },
-                    { value: `${peopleAhead} AHEAD`, label: "People Ahead" },
-                    { value: `${waitMins} MIN`, label: "Est. Wait" },
-                  ].map(s => (
-                    <div key={s.label} className={`rounded-2xl p-3 text-center backdrop-blur border ${s.value.includes('IN LINE ✓') ? 'bg-[#C5A059]/20 border-[#C5A059]/30' : 'bg-white/[0.07] border-white/10'}`}>
-                      <div className="font-black text-[11px] sm:text-[13px] tracking-tight">{s.value}</div>
-                      <div className="text-[10px] tracking-widest uppercase font-semibold text-white/60 leading-tight mt-1">{s.label}</div>
+                    { value: inQueue ? 'IN LINE ✓' : 'NOT IN LINE', label: 'Your Status • One Spot' },
+                    { value: `${peopleAhead} AHEAD`, label: 'People Ahead' },
+                    { value: `${waitMins} MIN`, label: 'Est. Wait' },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      className={cx(
+                        'rounded-2xl border p-3 text-center backdrop-blur',
+                        stat.value.includes('IN LINE ✓')
+                          ? 'border-[#C5A059]/30 bg-[#C5A059]/20'
+                          : 'border-white/10 bg-white/[0.07]'
+                      )}
+                    >
+                      <div className="text-[11px] font-black tracking-tight sm:text-[13px]">{stat.value}</div>
+                      <div className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-white/60 leading-tight">
+                        {stat.label}
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="relative mt-auto -mx-6 sm:-mx-10 lg:-mx-12 -mb-6 sm:-mb-10 lg:-mb-12 pt-6">
-                <div className="bg-[#C5A059] text-black mx-6 sm:mx-10 lg:mx-12 rounded-2xl px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center text-xs font-black">1</span>
-                    <div className="leading-tight">
-                      <div className="text-[11px] font-black tracking-widest uppercase">Queue Rule — One Spot Per Person</div>
-                      <div className="text-[13px] font-bold">{peopleAhead} ahead • {inQueue ? "You have 1 spot" : "Join to hold your spot"} • ~{waitMins} min</div>
+              <div className="relative mt-auto -mx-6 pt-6 sm:-mx-10 lg:-mx-12 sm:-mb-10 lg:-mb-12">
+                <div className="mx-6 rounded-2xl bg-[#C5A059] px-4 py-3 text-black sm:mx-10 lg:mx-12 sm:px-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black text-xs font-black text-white">
+                        1
+                      </span>
+                      <div className="leading-tight">
+                        <div className="text-[11px] font-black uppercase tracking-widest">
+                          Queue Rule — One Spot Per Person
+                        </div>
+                        <div className="text-[13px] font-bold">
+                          {peopleAhead} ahead • {inQueue ? 'You have 1 spot' : 'Join to hold your spot'} • ~{waitMins} min
+                        </div>
+                      </div>
                     </div>
+                    <button
+                      onClick={() => setInfoOpen(true)}
+                      className="rounded-full bg-black px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-white hover:bg-zinc-900"
+                    >
+                      How It Works
+                    </button>
                   </div>
-                  <button onClick={() => setInfoOpen(true)} className="text-[11px] font-black tracking-widest uppercase bg-black text-white px-3 py-1.5 rounded-full hover:bg-zinc-900">
-                    How It Works
-                  </button>
                 </div>
                 <div className="h-6" />
               </div>
             </div>
 
-            {/* Right visuals */}
-            <div className="grid grid-rows-[1.35fr_0.75fr] gap-6 min-h-[560px] sm:min-h-[620px]">
-              <div className="relative rounded-[28px] sm:rounded-[32px] overflow-hidden bg-[#EDE6D6]">
-                <img src={IMAGES.heroShop} alt="Baldy The Barber storefront" className="absolute inset-0 w-full h-full object-cover" />
+            <div className="grid min-h-[560px] grid-rows-[1.35fr_0.75fr] gap-6 sm:min-h-[620px]">
+              <div className="relative overflow-hidden rounded-[28px] bg-[#EDE6D6] sm:rounded-[32px]">
+                <img src={IMAGES.heroShop} alt="Baldy The Barber storefront" className="absolute inset-0 h-full w-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
-                <div className="absolute bottom-4 left-4 right-4 sm:left-5 sm:right-5 bg-white rounded-[18px] p-4 sm:p-5 shadow-[0_20px_50px_rgba(0,0,0,0.25)] border border-black/5">
+                <div className="absolute bottom-4 left-4 right-4 rounded-[18px] border border-black/5 bg-white p-4 shadow-[0_20px_50px_rgba(0,0,0,0.25)] sm:left-5 sm:right-5 sm:p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-[#111111] text-white flex items-center justify-center font-black text-sm shrink-0">M</div>
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#111111] text-sm font-black text-white">
+                        M
+                      </div>
                       <div>
-                        <div className="text-[12px] font-black tracking-widest uppercase flex items-center gap-1.5">
-                          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                          {inQueue ? "You're in line • One spot" : "Michael is cutting • Live"}
+                        <div className="flex items-center gap-1.5 text-[12px] font-black uppercase tracking-widest">
+                          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                          {inQueue ? 'You\'re in line • One spot' : 'Michael is cutting • Live'}
                         </div>
-                        <div className="text-[15px] font-black leading-tight">{inQueue ? `Your spot — ${peopleAhead} ahead` : `Next chair in ~${waitMins} min`}</div>
-                        <div className="text-xs text-black/60">{inQueue ? "You can only hold one spot" : peopleAhead === 0 ? "No wait — walk right in" : `${peopleAhead} ${peopleAhead===1?'person':'people'} waiting`}</div>
+                        <div className="text-[15px] font-black leading-tight">
+                          {inQueue ? `Your spot — ${peopleAhead} ahead` : `Next chair in ~${waitMins} min`}
+                        </div>
+                        <div className="text-xs text-black/60">
+                          {inQueue
+                            ? 'You can only hold one spot'
+                            : peopleAhead === 0
+                              ? 'No wait — walk right in'
+                              : `${peopleAhead} ${peopleAhead === 1 ? 'person' : 'people'} waiting`}
+                        </div>
                       </div>
                     </div>
-                    <span className={`hidden sm:inline-flex text-[10px] font-black tracking-widest uppercase px-2.5 py-1 rounded-full ${inQueue ? 'bg-emerald-500 text-white' : 'bg-[#C5A059] text-black'}`}>{inQueue ? 'In Line' : 'Live'}</span>
+                    <span
+                      className={cx(
+                        'hidden rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest sm:inline-flex',
+                        inQueue ? 'bg-emerald-500 text-white' : 'bg-[#C5A059] text-black'
+                      )}
+                    >
+                      {inQueue ? 'In line' : 'Live'}
+                    </span>
                   </div>
 
                   <div className="mt-4 flex items-center gap-2">
-                    <div className="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-[#111111] rounded-full transition-all duration-500" style={{ width: `${peopleAhead===0?100: Math.max(15, 100 - peopleAhead*22)}%` }} />
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100">
+                      <div
+                        className="h-full rounded-full bg-[#111111] transition-all duration-500"
+                        style={{ width: `${peopleAhead === 0 ? 100 : Math.max(15, 100 - peopleAhead * 22)}%` }}
+                      />
                     </div>
-                    <span className="text-[11px] font-bold text-black/50">{inQueue ? "In Line" : `~${waitMins}m`}</span>
+                    <span className="text-[11px] font-bold text-black/50">{inQueue ? 'In Line' : `~${waitMins}m`}</span>
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button onClick={handleLeaveQueue} disabled={!inQueue} className={`rounded-full py-2.5 text-xs font-black uppercase tracking-widest transition-colors border ${!inQueue ? 'bg-zinc-100 text-black/20 border-black/5 cursor-not-allowed' : 'bg-white border-black/10 text-black hover:bg-zinc-50'}`}>
-                      {inQueue ? "Leave My Spot" : "Not In Line"}
+                    <button
+                      onClick={handleLeaveQueue}
+                      disabled={!inQueue}
+                      className={cx(
+                        'rounded-full border py-2.5 text-xs font-black uppercase tracking-widest transition-colors',
+                        !inQueue ? 'cursor-not-allowed border-black/5 bg-zinc-100 text-black/20' : 'border-black/10 bg-white text-black'
+                      )}
+                    >
+                      {inQueue ? 'Leave My Spot' : 'Not In Line'}
                     </button>
-                    <button onClick={handleJoinQueue} disabled={inQueue} className={`rounded-full py-2.5 text-xs font-black uppercase tracking-widest transition-colors ${inQueue ? 'bg-emerald-100 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#111111] text-white hover:bg-black'}`}>
-                      {inQueue ? "✓ One Spot Only" : "+ Join — One Spot"}
+                    <button
+                      onClick={handleJoinQueue}
+                      disabled={inQueue > 0}
+                      className={cx(
+                        'rounded-full py-2.5 text-xs font-black uppercase tracking-widest transition-colors',
+                        inQueue ? 'cursor-not-allowed bg-emerald-100 text-emerald-700' : 'bg-[#111111] text-white'
+                      )}
+                    >
+                      {inQueue ? '✓ One Spot Only' : '+ Join — One Spot'}
                     </button>
                   </div>
-                  <div className="mt-3 text-center text-[10px] font-semibold tracking-wide text-black/40 uppercase">
-                    {inQueue ? "You can only join once — one spot per person" : "Tap join once — you get one spot, no doubles"}
+                  <div className="mt-3 text-center text-[10px] font-semibold uppercase tracking-wide text-black/40">
+                    {inQueue ? 'You can only join once — one spot per person' : 'Tap join once — you get one spot, no doubles'}
                   </div>
                 </div>
 
-                <div className="absolute top-0 right-6 sm:right-8 w-10 h-full opacity-90 hidden sm:block">
-                  <div className="w-full h-full bg-[repeating-linear-gradient(45deg,white_0_12px,#C41E3A_12px_24px,#1A3A5F_24px_36px)]" />
-                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-12 h-6 bg-gradient-to-b from-[#C5A059] to-[#8B6F3A] rounded-t-full border border-black/20" />
-                  <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-12 h-6 bg-gradient-to-b from-[#8B6F3A] to-[#C5A059] rounded-b-full border border-black/20" />
+                <div className="absolute right-6 top-0 hidden h-full w-10 opacity-90 sm:right-8 sm:block">
+                  <div className="h-full w-full bg-[repeating-linear-gradient(45deg,white_0_12px,#C41E3A_12px_24px,#1A3A5F_24px_36px)]" />
+                  <div className="absolute -top-1 left-1/2 h-6 w-12 -translate-x-1/2 rounded-t-full border border-black/20 bg-gradient-to-b from-[#C5A059] to-[#8B6F3A]" />
+                  <div className="absolute -bottom-1 left-1/2 h-6 w-12 -translate-x-1/2 rounded-b-full border border-black/20 bg-gradient-to-b from-[#8B6F3A] to-[#C5A059]" />
                 </div>
               </div>
 
               <div className="grid grid-cols-[1.2fr_0.8fr] gap-6">
-                <div className="relative rounded-[28px] overflow-hidden bg-[#111111] p-6 flex flex-col justify-between text-white">
-                  <div className="absolute inset-0 opacity-20" style={{ backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`, backgroundSize: '18px 18px' }} />
+                <div className="relative flex flex-col justify-between overflow-hidden rounded-[28px] bg-[#111111] p-6 text-white">
+                  <div
+                    className="absolute inset-0 opacity-20"
+                    style={{
+                      backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+                      backgroundSize: '18px 18px',
+                    }}
+                  />
+
                   <div className="relative">
-                    <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#C5A059]">Queue Policy</div>
-                    <div className="text-[18px] sm:text-[20px] font-black leading-tight mt-1" style={{ fontFamily: 'Playfair Display, serif' }}>One person.<br />One spot.<br />No doubles.</div>
-                    <div className="mt-2 text-xs text-white/60 leading-relaxed max-w-[220px]">Michael's rule keeps it fair — you can only hold one spot at a time.</div>
+                    <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#C5A059]">Queue Policy</div>
+                    <div className="mt-1 text-[18px] font-black leading-tight sm:text-[20px]" style={{ fontFamily: 'Playfair Display, serif' }}>
+                      One person.<br />
+                      One spot.<br />
+                      No doubles.
+                    </div>
+                    <div className="mt-2 max-w-[220px] text-xs leading-relaxed text-white/60">
+                      Michael's rule keeps it fair — you can only hold one spot at a time.
+                    </div>
                   </div>
+
                   <div className="relative mt-4 flex items-center gap-2">
-                    <button onClick={handleJoinQueue} disabled={inQueue} className={`text-[11px] tracking-widest uppercase font-black px-3.5 py-2 rounded-full transition-colors ${inQueue ? 'bg-emerald-400/20 text-emerald-200 cursor-not-allowed' : 'bg-[#C5A059] text-black'}`}>
-                      {inQueue ? "✓ In Queue" : "Join Once"}
+                    <button
+                      onClick={handleJoinQueue}
+                      disabled={inQueue >= 2}
+                      className={cx(
+                        'rounded-full px-3.5 py-2 text-[11px] font-black uppercase tracking-widest transition-colors',
+                        inQueue ? 'cursor-not-allowed bg-emerald-100 text-emerald-900' : 'bg-[#C5A059] text-black'
+                      )}
+                    >
+                      {inQueue ? '✓ In Queue' : 'Join Once'}
                     </button>
-                    {inQueue && <span className="text-[10px] text-white/50">Tap Leave to free spot</span>}
+                    {inQueue > 0 && <span className="text-[10px] text-white/50">Tap Leave to free spot</span>}
                   </div>
                 </div>
-                <div className="relative rounded-[28px] overflow-hidden bg-[#C5A059] p-1">
-                  <img src={IMAGES.detailChair} alt="Barber chairs inside the shop" className="w-full h-full object-cover rounded-[24px]" />
-                  <div className="absolute bottom-2 left-2 right-2 bg-black text-white rounded-full px-3 py-2 flex items-center justify-between">
-                    <span className="text-[11px] font-black tracking-widest uppercase">One Spot Rule</span>
-                    <span className="w-6 h-6 rounded-full bg-white text-black flex items-center justify-center text-xs">1</span>
+
+                <div className="relative overflow-hidden rounded-[28px] bg-[#C5A059] p-1">
+                  <img src={IMAGES.detailChair} alt="Barber chairs inside the shop" className="h-full w-full rounded-[24px] object-cover" />
+                  <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between rounded-full bg-black px-3 py-2 text-white">
+                    <span className="text-[11px] font-black uppercase tracking-widest">One Spot Rule</span>
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs text-black">1</span>
                   </div>
                 </div>
               </div>
@@ -383,94 +635,132 @@ const handleLeaveQueue = () => {
         </div>
       </section>
 
-      {/* Marquee */}
-      <div className="bg-[#111111] text-[#C5A059] border-y border-white/10 overflow-hidden">
+      <div className="overflow-hidden border-y border-white/10 bg-[#111111] text-[#C5A059]">
         <div className="flex animate-marquee whitespace-nowrap py-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <span key={i} className="flex items-center gap-6 mx-6 text-[13px] font-black tracking-[0.2em] uppercase">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <span key={index} className="mx-6 flex items-center gap-6 text-[13px] font-black uppercase tracking-[0.2em]">
               <span>One Spot Per Person</span>
-              <span className="w-1.5 h-1.5 bg-[#C5A059] rounded-full" />
+              <span className="h-1.5 w-1.5 rounded-full bg-[#C5A059]" />
               <span>Cut Right. Stay Sharp.</span>
-              <span className="w-1.5 h-1.5 bg-white rounded-full" />
+              <span className="h-1.5 w-1.5 rounded-full bg-white" />
               <span>Walk-Ins Only • $30 Classic • 4.7★</span>
-              <span className="w-1.5 h-1.5 bg-[#C41E3A] rounded-full" />
+              <span className="h-1.5 w-1.5 rounded-full bg-[#C41E3A]" />
             </span>
           ))}
         </div>
       </div>
 
-      {/* Services */}
       <section id="services" className="py-14 sm:py-20">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8">
+          <div className="mb-10 flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
             <div>
-              <div className="inline-flex items-center gap-2 bg-[#111111] text-white rounded-full px-3 py-1.5 text-[11px] font-bold tracking-[0.18em] uppercase">
-                <span className="w-5 h-5 rounded-full bg-[#C5A059] flex items-center justify-center text-black">✂</span>
+              <div className="inline-flex items-center gap-2 rounded-full bg-[#111111] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-white">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#C5A059] text-black">✂</span>
                 One Chair • One Spot Per Person • $30 Flat
               </div>
-              <h2 className="mt-4 text-[34px] sm:text-[52px] font-black tracking-tight leading-[0.9]" style={{ fontFamily: 'Playfair Display, serif' }}>
+              <h2
+                className="mt-4 text-[34px] font-black leading-[0.9] tracking-tight sm:text-[52px]"
+                style={{ fontFamily: 'Playfair Display, serif' }}
+              >
                 The classic.<br />
-                <span className="text-[#C5A059] italic font-black">$30. One spot.</span>
+                <span className="text-[#C5A059] italic">$30. One spot.</span>
               </h2>
             </div>
+
             <div className="lg:max-w-[500px]">
               <p className="text-[15px] leading-relaxed text-black/60">
                 Michael enforces one spot per person so no one can block the line. Join once, wait your turn, $30 classic.
               </p>
-              <div className="mt-4 inline-flex items-center gap-2 bg-[#111111] text-white rounded-full px-4 py-2 text-xs font-bold tracking-widest uppercase">
-                <span className={`w-2 h-2 rounded-full ${inQueue ? 'bg-emerald-400 animate-pulse' : 'bg-[#C5A059] animate-pulse'}`} />
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#111111] px-4 py-2 text-xs font-bold uppercase tracking-widest text-white">
+                <span
+                  className={cx(
+                    'h-2 w-2 rounded-full',
+                    inQueue ? 'animate-pulse bg-emerald-400' : 'animate-pulse bg-[#C5A059]'
+                  )}
+                />
                 {inQueue ? `You're in line • ${peopleAhead} ahead • ${waitMins} min` : `Live: ${peopleAhead} ahead • ${waitMins} min • Join once`}
               </div>
             </div>
           </div>
 
-          <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-6 items-start">
-            <div className="bg-[#111111] text-white rounded-[32px] p-7 sm:p-10 relative overflow-hidden border border-white/5 shadow-2xl">
-              <div className="absolute top-0 right-0 w-[380px] h-[380px] bg-[#C5A059]/15 blur-[70px] rounded-full -translate-y-1/2 translate-x-1/4" />
+          <div className="grid items-start gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="relative overflow-hidden rounded-[32px] bg-[#111111] p-7 text-white shadow-2xl sm:p-10">
+              <div className="absolute right-0 top-0 h-[380px] w-[380px] -translate-y-1/2 translate-x-1/4 rounded-full bg-[#C5A059]/15 blur-[70px]" />
+
               <div className="relative">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <div className="text-[11px] font-black tracking-[0.2em] uppercase text-[#C5A059]">Michael's Rule</div>
-                    <h3 className="mt-2 text-[32px] sm:text-[40px] font-black leading-none tracking-tight" style={{ fontFamily: 'Playfair Display, serif' }}>
+                    <div className="text-[11px] font-black uppercase tracking-[0.2em] text-[#C5A059]">
+                      Michael's Rule
+                    </div>
+                    <h3
+                      className="mt-2 text-[32px] font-black leading-none tracking-tight sm:text-[40px]"
+                      style={{ fontFamily: 'Playfair Display, serif' }}
+                    >
                       Classic Haircut
                     </h3>
                     <div className="mt-3 flex items-center gap-3">
-                      <span className="bg-white text-black rounded-full px-4 py-1.5 font-black text-lg">$30</span>
-                      <span className="bg-white/10 border border-white/10 rounded-full px-3 py-1.5 text-xs font-bold tracking-widest uppercase">One Spot / Person</span>
-                      <span className="hidden sm:inline-flex bg-[#C5A059] text-black rounded-full px-3 py-1.5 text-xs font-black tracking-widest uppercase">Michael • Owner</span>
+                      <span className="rounded-full bg-white px-4 py-1.5 text-lg font-black text-black">$30</span>
+                      <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-widest">
+                        One Spot / Person
+                      </span>
+                      <span className="hidden rounded-full bg-[#C5A059] px-3 py-1.5 text-xs font-black uppercase tracking-widest text-black sm:inline-flex">
+                        Michael • Owner
+                      </span>
                     </div>
                   </div>
-                  <img src="/logo.png" alt="logo" className="w-16 h-16 object-contain bg-white rounded-2xl p-1 shadow-lg hidden sm:block" />
+                  <img src="/logo.png" alt="logo" className="hidden h-16 w-16 rounded-2xl bg-white object-contain p-1 shadow-lg sm:block" />
                 </div>
 
-                <div className="mt-8 grid sm:grid-cols-2 gap-8">
+                <div className="mt-8 grid gap-8 sm:grid-cols-2">
                   <div>
-                    <div className="text-[11px] font-black tracking-widest uppercase text-white/50">What's Included — Same $30</div>
+                    <div className="text-[11px] font-black uppercase tracking-widest text-white/50">
+                      What's Included — Same $30
+                    </div>
                     <ul className="mt-3 space-y-2.5">
                       {[
-                        "Precision scissor & clipper classic",
-                        "Straight-razor neck cleanup",
-                        "Natural edge & sideburns",
-                        "One spot in queue per person",
-                        "Hot lather + brush off",
-                      ].map(item => (
-                        <li key={item} className="flex gap-3 text-sm text-white/80 leading-tight">
-                          <span className="w-5 h-5 rounded-full bg-[#C5A059] text-black flex items-center justify-center shrink-0 text-[11px] font-black">✓</span>
+                        'Precision scissor & clipper classic',
+                        'Straight-razor neck cleanup',
+                        'Natural edge & sideburns',
+                        'One spot in queue per person',
+                        'Hot lather + brush off',
+                      ].map((item) => (
+                        <li key={item} className="flex gap-3 text-sm leading-tight text-white/80">
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#C5A059] text-[11px] font-black text-black">
+                            ✓
+                          </span>
                           {item}
                         </li>
                       ))}
                     </ul>
                   </div>
-                  <div className="bg-white/5 border border-white/10 rounded-2xl p-5 backdrop-blur">
-                    <div className="text-xs font-black tracking-widest uppercase text-[#C5A059]">One Spot Only — No Doubles</div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur">
+                    <div className="text-xs font-black uppercase tracking-widest text-[#C5A059]">
+                      One Spot Only — No Doubles
+                    </div>
                     <p className="mt-2 text-sm text-white/60">
                       Join once, hold your place. Leave if plans change, then you can rejoin. Prevents line blocking.
                     </p>
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button onClick={handleJoinQueue} disabled={inQueue >= 2} className={`rounded-full py-2.5 text-xs font-black tracking-widest uppercase transition-colors ${inQueue ? 'bg-white/10 text-white/30 cursor-not-allowed' : 'bg-[#C5A059] text-black'}`}>
-                        {inQueue ? "✓ Already In" : "+ Join Queue"}
+                      <button
+                        onClick={handleJoinQueue}
+                        disabled={inQueue >= 2}
+                        className={cx(
+                          'rounded-full py-2.5 text-xs font-black uppercase tracking-widest transition-colors',
+                          inQueue ? 'cursor-not-allowed bg-white/10 text-white/40' : 'bg-white text-black'
+                        )}
+                      >
+                        {inQueue ? '✓ Already In' : '+ Join Queue'}
                       </button>
-                      <button onClick={handleLeaveQueue} disabled={inQueue <= 0} className={`rounded-full py-2.5 text-xs font-black tracking-widest uppercase transition-colors border ${!inQueue ? 'bg-white/5 text-white/20 border-white/10 cursor-not-allowed' : 'border-white/10 text-white'}`}>
+                      <button
+                        onClick={handleLeaveQueue}
+                        disabled={inQueue <= 0}
+                        className={cx(
+                          'rounded-full border py-2.5 text-xs font-black uppercase tracking-widest transition-colors',
+                          inQueue <= 0 ? 'cursor-not-allowed border-white/10 bg-white/5 text-white/40' : 'border-white/20 bg-transparent text-white'
+                        )}
+                      >
                         Leave Spot
                       </button>
                     </div>
@@ -480,38 +770,76 @@ const handleLeaveQueue = () => {
             </div>
 
             <div className="space-y-4">
-              <div className="bg-white rounded-[28px] p-6 sm:p-7 border border-black/10">
+              <div className="rounded-[28px] border border-black/10 bg-white p-6 sm:p-7">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black tracking-widest uppercase">Live Queue — One Spot Rule</span>
-                  <span className={`text-[11px] font-black px-2.5 py-1 rounded-full ${inQueue ? 'bg-emerald-500 text-white' : 'bg-[#111111] text-white'}`}>{inQueue ? "You're In" : `${peopleAhead} Ahead`}</span>
+                  <span className="text-xs font-black uppercase tracking-widest">Live Queue — One Spot Rule</span>
+                  <span
+                    className={cx(
+                      'rounded-full px-2.5 py-1 text-[11px] font-black',
+                      inQueue ? 'bg-emerald-500 text-white' : 'bg-[#111111] text-white'
+                    )}
+                  >
+                    {inQueue ? "You're In" : `${peopleAhead} Ahead`}
+                  </span>
                 </div>
-                <div className="mt-4 bg-[#FDF8F0] border border-black/5 rounded-2xl p-4">
+
+                <div className="mt-4 rounded-2xl border border-black/5 bg-[#FDF8F0] p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-2xl font-black leading-none">{inQueue ? "You're in line" : `${peopleAhead} ${peopleAhead===1?'person':'people'} waiting`}</div>
-                      <div className="text-xs text-black/60 font-semibold mt-1">{inQueue ? `One spot only • ${peopleAhead} ahead • ~${waitMins} min` : `Est. wait ~${waitMins} min • One spot per person`}</div>
+                      <div className="text-2xl font-black leading-none">
+                        {inQueue ? "You're in line" : `${peopleAhead} ${peopleAhead === 1 ? 'person' : 'people'} waiting`}
+                      </div>
+                      <div className="mt-1 text-xs font-semibold text-black/60">
+                        {inQueue ? `One spot only • ${peopleAhead} ahead • ~${waitMins} min` : `Est. wait ~${waitMins} min • One spot per person`}
+                      </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs font-black tracking-widest uppercase text-black/40">Your Status</div>
-                      <div className={`font-black text-[13px] px-3 py-1 rounded-full ${inQueue ? 'bg-emerald-500 text-white' : 'bg-zinc-200 text-black/60'}`}>{inQueue ? "✓ In Queue" : "Not In"}</div>
+                      <div className="text-xs font-black uppercase tracking-widest text-black/40">Your Status</div>
+                      <div
+                        className={cx(
+                          'mt-1 rounded-full px-3 py-1 text-[13px] font-black',
+                          inQueue ? 'bg-emerald-500 text-white' : 'bg-zinc-200 text-black/60'
+                        )}
+                      >
+                        {inQueue ? '✓ In Queue' : 'Not In'}
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-3 h-2 bg-black/10 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#C5A059] rounded-full transition-all" style={{ width: `${peopleAhead===0?100:Math.max(20,100-peopleAhead*18)}%` }} />
+
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/10">
+                    <div
+                      className="h-full rounded-full bg-[#C5A059] transition-all"
+                      style={{ width: `${peopleAhead === 0 ? 100 : Math.max(20, 100 - peopleAhead * 18)}%` }}
+                    />
                   </div>
+
                   <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button onClick={handleLeaveQueue} disabled={inQueue <= 0} className={`rounded-full py-2.5 text-xs font-black uppercase transition-colors ${!inQueue ? 'bg-zinc-100 text-black/20 border border-black/5 cursor-not-allowed' : 'bg-zinc-900 text-white'}`}>
+                    <button
+                      onClick={handleLeaveQueue}
+                      disabled={inQueue <= 0}
+                      className={cx(
+                        'rounded-full py-2.5 text-xs font-black uppercase transition-colors',
+                        inQueue <= 0 ? 'cursor-not-allowed bg-zinc-100 text-black/20' : 'bg-[#111111] text-white'
+                      )}
+                    >
                       Leave
                     </button>
-                    <button onClick={handleJoinQueue} disabled={inQueue >= 2} className={`rounded-full py-2.5 text-xs font-black uppercase transition-colors ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#C5A059] text-black'}`}>
+                    <button
+                      onClick={handleJoinQueue}
+                      disabled={inQueue >= 2}
+                      className={cx(
+                        'rounded-full py-2.5 text-xs font-black uppercase transition-colors',
+                        inQueue ? 'cursor-not-allowed bg-emerald-50 text-emerald-700' : 'bg-[#C5A059] text-black'
+                      )}
+                    >
                       Join
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-[#EDE6D6] rounded-[28px] p-6 border border-black/5">
-                <h4 className="font-black text-[16px] leading-tight">One spot per person — why?</h4>
+              <div className="rounded-[28px] border border-black/5 bg-[#EDE6D6] p-6">
+                <h4 className="text-[16px] font-black leading-tight">One spot per person — why?</h4>
                 <p className="mt-2 text-[13px] leading-relaxed text-black/60">
                   Stops someone from spamming the queue. You tap join once, you hold one place. Leave if plans change, then you can rejoin. Keeps it fair on busy Saturdays.
                 </p>
@@ -521,56 +849,77 @@ const handleLeaveQueue = () => {
         </div>
       </section>
 
-      {/* About Michael */}
       <section id="about" className="py-6 sm:py-10">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-white rounded-[32px] border border-black/10 overflow-hidden grid lg:grid-cols-2">
-            <div className="relative min-h-[420px] sm:min-h-[560px] bg-[#111111] overflow-hidden">
-              <img src={IMAGES.michaelPortrait} alt="Michael — owner of Baldy The Barber" className="absolute inset-0 w-full h-full object-cover opacity-90" />
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8">
+          <div className="grid overflow-hidden rounded-[32px] border border-black/10 bg-white lg:grid-cols-2">
+            <div className="relative min-h-[420px] overflow-hidden bg-[#111111] sm:min-h-[560px]">
+              <img src={IMAGES.michaelPortrait} alt="Michael — owner of Baldy The Barber" className="absolute inset-0 h-full w-full object-cover opacity-90" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
               <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8">
-                <div className="bg-white rounded-2xl p-4 sm:p-5 flex items-center gap-4 max-w-[380px]">
-                  <div className="w-12 h-12 rounded-full bg-[#111111] text-white flex items-center justify-center font-black text-lg shrink-0">M</div>
+                <div className="flex max-w-[380px] items-center gap-4 rounded-2xl bg-white p-4 sm:p-5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#111111] text-lg font-black text-white">
+                    M
+                  </div>
                   <div>
-                    <div className="font-black text-sm leading-none">Michael — Owner & Barber</div>
-                    <div className="text-xs text-black/60 leading-tight mt-1">“One chair, one spot per person, $30 classic. No one can hold two places — keeps it fair.”</div>
+                    <div className="text-sm font-black leading-none">Michael — Owner & Barber</div>
+                    <div className="mt-1 text-xs leading-tight text-black/60">
+                      “One chair, one spot per person, $30 classic. No one can hold two places — keeps it fair.”
+                    </div>
                   </div>
                 </div>
               </div>
-              <div className="absolute top-6 left-6 bg-[#C5A059] text-black rounded-full px-4 py-2 text-xs font-black tracking-widest uppercase">
+              <div className="absolute left-6 top-6 rounded-full bg-[#C5A059] px-4 py-2 text-xs font-black uppercase tracking-widest text-black">
                 Meet Michael — One Spot Rule
               </div>
             </div>
+
             <div className="p-6 sm:p-10 lg:p-12">
-              <div className="inline-flex items-center gap-2 text-[11px] font-black tracking-[0.18em] uppercase text-[#C5A059]">
-                <span className="w-8 h-[2px] bg-[#C5A059]" />
+              <div className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#C5A059]">
+                <span className="h-[2px] w-8 bg-[#C5A059]" />
                 Queue Policy
               </div>
-              <h2 className="mt-3 text-[32px] sm:text-[38px] font-black leading-[0.95] tracking-tight" style={{ fontFamily: 'Playfair Display, serif' }}>
+              <h2
+                className="mt-3 text-[32px] font-black leading-[0.95] tracking-tight sm:text-[38px]"
+                style={{ fontFamily: 'Playfair Display, serif' }}
+              >
                 One spot.<br /> No <span className="text-[#C5A059]">doubles.</span>
               </h2>
               <p className="mt-4 text-[15px] leading-relaxed text-black/60">
-                You can only join the queue once until you leave. Tap Join, you hold your place. Tap Leave, it's free. Michael added this so one person can't block the board — fair for everyone on Route 611.
+                You can only join the queue once until you leave. Tap Join, you hold your place. Tap Leave, it's free. Michael added this so one person can't block the board — fair for everyone on busy days.
               </p>
 
               <div className="mt-8 grid grid-cols-3 gap-3">
                 {[
-                  { k: inQueue ? "In Line ✓" : "Tap Join", v: "One spot only per person" },
-                  { k: "4.7★ Rated", v: `${reviews.length} walk-in reviews` },
-                  { k: "5+ Yrs OC", v: "Michael • Owner" },
-                ].map(item => (
-                  <div key={item.k} className="bg-[#FDF8F0] border border-black/5 rounded-2xl p-4 text-center">
-                    <div className="font-black text-[13px] leading-tight">{item.k}</div>
-                    <div className="text-[11px] leading-tight text-black/60 mt-1">{item.v}</div>
+                  { key: inQueue ? 'In Line ✓' : 'Tap Join', value: 'One spot only per person' },
+                  { key: '4.7★ Rated', value: `${reviews.length} walk-in reviews` },
+                  { key: '5+ Yrs OC', value: 'Michael • Owner' },
+                ].map((item) => (
+                  <div key={item.key} className="rounded-2xl border border-black/5 bg-[#FDF8F0] p-4 text-center">
+                    <div className="text-[13px] font-black leading-tight">{item.key}</div>
+                    <div className="mt-1 text-[11px] leading-tight text-black/60">{item.value}</div>
                   </div>
                 ))}
               </div>
 
               <div className="mt-8 flex gap-3">
-                <button onClick={handleJoinQueue} disabled={inQueue >=2} className={`flex-1 rounded-full py-3.5 text-[13px] font-black tracking-widest uppercase transition-colors ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
-                  {inQueue ? "✓ You're In (One Spot)" : "Join Queue Once"}
+                <button
+                  onClick={handleJoinQueue}
+                  disabled={inQueue >= 2}
+                  className={cx(
+                    'flex-1 rounded-full py-3.5 text-[13px] font-black uppercase tracking-widest transition-colors',
+                    inQueue ? 'cursor-not-allowed bg-emerald-100 text-emerald-900' : 'bg-[#111111] text-white'
+                  )}
+                >
+                  {inQueue ? '✓ You\'re In (One Spot)' : 'Join Queue Once'}
                 </button>
-                <button onClick={handleLeaveQueue} disabled={!inQueue <=0} className={`flex-1 rounded-full py-3.5 text-[13px] font-black tracking-widest uppercase transition-colors border ${!inQueue ? 'bg-white text-black/20 border-black/5 cursor-not-allowed' : 'border-black/10 bg-white text-black'}`}>
+                <button
+                  onClick={handleLeaveQueue}
+                  disabled={inQueue <= 0}
+                  className={cx(
+                    'flex-1 rounded-full border py-3.5 text-[13px] font-black uppercase tracking-widest transition-colors',
+                    inQueue <= 0 ? 'cursor-not-allowed border-black/5 bg-white text-black/20' : 'border-black/10 bg-[#FDF8F0] text-black'
+                  )}
+                >
                   Leave Spot
                 </button>
               </div>
@@ -579,151 +928,254 @@ const handleLeaveQueue = () => {
         </div>
       </section>
 
-      {/* Reviews */}
       <section id="reviews" className="py-14 sm:py-16">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8">
+          <div className="mb-8 flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
             <div>
-              <div className="inline-flex items-center gap-2 bg-[#111111] text-white rounded-full px-3 py-1.5 text-[11px] font-bold tracking-[0.18em] uppercase">
-                <span className="w-5 h-5 rounded-full bg-[#C5A059] flex items-center justify-center text-black">★</span>
+              <div className="inline-flex items-center gap-2 rounded-full bg-[#111111] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-white">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#C5A059] text-black">★</span>
                 {avgRating.toFixed(1)} Stars • One Spot Rule • Owner Michael
               </div>
-              <h2 className="mt-4 text-[30px] sm:text-[40px] font-black leading-[0.9] tracking-tight" style={{ fontFamily: 'Playfair Display, serif' }}>
+              <h2
+                className="mt-4 text-[30px] font-black leading-[0.9] tracking-tight sm:text-[40px]"
+                style={{ fontFamily: 'Playfair Display, serif' }}
+              >
                 Real cuts.<br /> <span className="text-[#C5A059] italic">One spot each.</span>
               </h2>
             </div>
+
             <div className="flex gap-3">
-              <button onClick={()=> setReviewOpen(true)} className="inline-flex items-center gap-2 bg-[#C5A059] text-black rounded-full px-6 py-3 text-sm font-black tracking-widest uppercase hover:bg-[#dcb777] transition-colors">
+              <button
+                onClick={() => setReviewOpen(true)}
+                className="rounded-full bg-[#C5A059] px-6 py-3 text-sm font-black uppercase tracking-widest text-black transition-colors hover:bg-[#d4b77d]"
+              >
                 Leave a Review
               </button>
-              <button onClick={()=> { navigator.clipboard?.writeText(window.location.href); setToast("Link copied") }} className="inline-flex items-center gap-2 bg-white border border-black/10 rounded-full px-6 py-3 text-sm font-black tracking-widest uppercase hover:bg-zinc-50 transition-colors">
+              <button
+                onClick={handleShare}
+                className="rounded-full border border-black/10 bg-white px-6 py-3 text-sm font-black uppercase tracking-widest text-black transition-colors hover:bg-zinc-50"
+              >
                 Share
               </button>
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4">
-            {reviews.map(r => (
-              <div key={r.id} className="bg-white border border-black/10 rounded-[24px] p-6 flex flex-col">
+          <div className="grid gap-4 md:grid-cols-3">
+            {reviews.map((review) => (
+              <article key={review.id} className="flex flex-col rounded-[24px] border border-black/10 bg-white p-6">
                 <div className="flex items-center justify-between">
-                  <div className="flex text-[#C5A059] text-sm">
-                    {Array.from({ length: 5 }).map((_, i) => <span key={i} className={i < r.stars ? "" : "opacity-20"}>★</span>)}
+                  <div className="flex text-sm text-[#C5A059]">
+                    {Array.from({ length: 5 }).map((_, starIndex) => (
+                      <span key={starIndex} className={cx(starIndex < review.stars ? '' : 'opacity-20')}>
+                        ★
+                      </span>
+                    ))}
                   </div>
-                  <span className="text-[11px] font-bold tracking-widest uppercase bg-[#FDF8F0] border border-black/5 px-2.5 py-1 rounded-full">{r.stars}.0</span>
+                  <span className="rounded-full border border-black/5 bg-[#FDF8F0] px-2.5 py-1 text-[11px] font-bold uppercase tracking-widest">
+                    {review.stars}.0
+                  </span>
                 </div>
-                <p className="mt-3 text-[14px] leading-relaxed text-black/70 flex-1">“{r.text}”</p>
+
+                <p className="mt-3 flex-1 text-[14px] leading-relaxed text-black/70">“{review.text}”</p>
+
                 <div className="mt-4 flex items-center justify-between border-t border-black/5 pt-4">
-                  <div className="font-black text-sm flex items-center gap-2">
-                    <span className="w-8 h-8 rounded-full bg-[#111111] text-white flex items-center justify-center text-xs">{r.name[0]}</span>
-                    {r.name}
+                  <div className="flex items-center gap-2 text-sm font-black">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#111111] text-xs text-white">
+                      {review.name[0]}
+                    </span>
+                    {review.name}
                   </div>
-                  <div className="text-[11px] text-black/40 font-semibold">{r.tag}</div>
+                  <div className="text-[11px] font-semibold text-black/40">{review.tag}</div>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Visit */}
       <section id="visit" className="py-14 sm:py-20">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-6">
-            <div className="bg-[#111111] rounded-[32px] overflow-hidden text-white p-6 sm:p-8 lg:p-10 relative">
-              <div className="absolute top-0 right-0 w-[360px] h-[360px] bg-[#C5A059]/15 blur-[80px] rounded-full -translate-y-1/2 translate-x-1/3" />
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8">
+          <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="relative overflow-hidden rounded-[32px] bg-[#111111] p-6 text-white sm:p-8 lg:p-10">
+              <div className="absolute right-0 top-0 h-[360px] w-[360px] -translate-y-1/2 translate-x-1/3 rounded-full bg-[#C5A059]/15 blur-[80px]" />
+
               <div className="relative">
-                <div className="inline-flex items-center gap-2 bg-[#C5A059] text-black rounded-full px-3 py-1.5 text-[11px] font-black tracking-[0.18em] uppercase">
+                <div className="inline-flex items-center gap-2 rounded-full bg-[#C5A059] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-black">
                   Owner Michael • One Spot Only • {inQueue ? "You're In" : `${peopleAhead} Ahead`}
                 </div>
-                <h2 className="mt-4 text-[30px] sm:text-[36px] font-black leading-none" style={{ fontFamily: 'Playfair Display, serif' }}>
+
+                <h2 className="mt-4 text-[30px] font-black leading-none sm:text-[36px]" style={{ fontFamily: 'Playfair Display, serif' }}>
                   One spot<br />
                   <span className="text-[#C5A059]">per person.</span>
                 </h2>
 
-                <div className="mt-6 bg-white rounded-[20px] p-5 text-[#111111]">
+                <div className="mt-6 rounded-[20px] bg-white p-5 text-[#111111]">
                   <div className="flex items-center justify-between">
-                    <div className="font-black text-[13px] tracking-widest uppercase">Live Queue — One Spot Rule</div>
-                    <span className={`text-[11px] font-black tracking-widest uppercase px-2.5 py-1 rounded-full ${inQueue ? 'bg-emerald-500 text-white' : 'bg-[#111111] text-white'}`}>{inQueue ? "You: In" : "Queue"}</span>
+                    <div className="text-[13px] font-black uppercase tracking-widest">Live Queue — One Spot Rule</div>
+                    <span
+                      className={cx(
+                        'rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-widest',
+                        inQueue ? 'bg-emerald-500 text-white' : 'bg-[#111111] text-white'
+                      )}
+                    >
+                      {inQueue ? "You: In" : 'Queue Live'}
+                    </span>
                   </div>
-                  <div className="mt-3 bg-[#FDF8F0] border border-black/5 rounded-2xl p-4">
+
+                  <div className="mt-3 rounded-2xl border border-black/5 bg-[#FDF8F0] p-4">
                     <div className="flex justify-between text-sm">
                       <span className="font-bold">{peopleAhead} ahead of you</span>
                       <span className="font-black">~{waitMins} min wait</span>
                     </div>
-                    <div className="mt-2 text-[11px] text-black/50">{inQueue ? "✓ You hold one spot — can't join again until you leave" : "Tap Join once to hold your spot — one per person"}</div>
+                    <div className="mt-2 text-[11px] text-black/50">
+                      {inQueue ? "✓ You hold one spot — can't join again until you leave" : 'Tap Join once to hold your spot — one per person'}
+                    </div>
+
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button onClick={handleJoinQueue} disabled={inQueue} className={`rounded-full py-2.5 text-xs font-black uppercase ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
-                        {inQueue ? "✓ You're In" : "Join Queue"}
+                      <button
+                        onClick={handleJoinQueue}
+                        disabled={inQueue >= 2}
+                        className={cx(
+                          'rounded-full py-2.5 text-xs font-black uppercase transition-colors',
+                          inQueue ? 'cursor-not-allowed bg-emerald-50 text-emerald-700' : 'bg-[#111111] text-white'
+                        )}
+                      >
+                        {inQueue ? '✓ You\'re In' : 'Join Queue'}
                       </button>
-                      <button onClick={handleLeaveQueue} disabled={!inQueue} className={`rounded-full py-2.5 text-xs font-black uppercase border ${!inQueue ? 'bg-zinc-100 text-black/20 border-black/5 cursor-not-allowed' : 'border-black/10 bg-white text-black'}`}>
+                      <button
+                        onClick={handleLeaveQueue}
+                        disabled={inQueue <= 0}
+                        className={cx(
+                          'rounded-full border py-2.5 text-xs font-black uppercase transition-colors',
+                          inQueue <= 0 ? 'cursor-not-allowed border-black/5 bg-zinc-100 text-black/20' : 'border-black/10 bg-white text-black'
+                        )}
+                      >
                         Leave Spot
                       </button>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-4 bg-white rounded-[20px] p-5 text-[#111111]">
-                  <div className="font-black text-[13px] tracking-widest uppercase flex items-center gap-2">
-                    <span className="w-8 h-8 rounded-full bg-[#C5A059] flex items-center justify-center">◷</span>
+                <div className="mt-4 rounded-[20px] bg-white p-5 text-[#111111]">
+                  <div className="flex items-center gap-2 text-[13px] font-black uppercase tracking-widest">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#C5A059]">◷</span>
                     Hours — Walk-Ins Only
                   </div>
+
                   <div className="mt-4 divide-y divide-black/5">
                     {[
                       { day: 'Mon–Fri', time: '9–4', highlight: true },
                       { day: 'Saturday', time: '9–2', highlight: false },
                       { day: 'Sunday', time: 'Closed', closed: true, highlight: false },
-                    ].map(h => (
-                      <div key={h.day} className={`flex items-center justify-between py-2.5 text-sm ${h.closed ? 'opacity-60' : ''} ${h.highlight ? 'font-bold' : ''}`}>
-                        <span className={`${h.highlight ? 'text-[#111111]' : h.closed ? 'text-black/50' : 'text-black/70'} font-semibold`}>{h.day}</span>
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${h.closed ? 'bg-zinc-100 text-black/50' : h.highlight ? 'bg-[#111111] text-white' : 'bg-zinc-100 text-black'}`}>{h.time}</span>
+                    ].map((hours) => (
+                      <div
+                        key={hours.day}
+                        className={cx(
+                          'flex items-center justify-between py-2.5 text-sm',
+                          hours.closed ? 'opacity-60' : '',
+                          hours.highlight ? 'font-bold' : ''
+                        )}
+                      >
+                        <span
+                          className={cx(
+                            hours.highlight ? 'text-[#111111]' : hours.closed ? 'text-black/50' : 'text-black/70',
+                            'font-semibold'
+                          )}
+                        >
+                          {hours.day}
+                        </span>
+                        <span
+                          className={cx(
+                            'rounded-full px-3 py-1 text-xs font-bold',
+                            hours.closed ? 'bg-zinc-100 text-black/50' : hours.highlight ? 'bg-[#111111] text-white' : 'bg-zinc-100 text-black'
+                          )}
+                        >
+                          {hours.time}
+                        </span>
                       </div>
                     ))}
                   </div>
-                  <div className="mt-3 text-[11px] text-black/50 font-medium">9935 Stephen Decatur Hwy, Ocean City, MD 21842</div>
+
+                  <div className="mt-3 text-[11px] font-medium text-black/50">
+                    9935 Stephen Decatur Hwy, Ocean City, MD 21842
+                  </div>
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <a href="tel:5136384928" className="bg-[#C5A059] text-black rounded-full py-3.5 text-center font-black text-[13px] tracking-widest uppercase hover:bg-[#D4B27A] transition-colors">
+                  <a
+                    href="tel:5136384928"
+                    className="rounded-full bg-[#C5A059] py-3.5 text-center text-[13px] font-black uppercase tracking-widest text-black transition-colors hover:bg-[#d4b77d]"
+                  >
                     Call Michael
                   </a>
-                  <a href="https://www.google.com/maps/dir/?api=1&destination=9935+Stephen+Decatur+Hwy+Ocean+City+MD+21842" target="_blank" rel="noreferrer" className="bg-white text-black rounded-full py-3.5 text-center font-black text-[13px] tracking-widest uppercase hover:bg-zinc-100 transition-colors">
+                  <a
+                    href="https://www.google.com/maps/dir/?api=1&destination=9935+Stephen+Decatur+Hwy+Ocean+City+MD+21842"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full bg-white py-3.5 text-center text-[13px] font-black uppercase tracking-widest text-black transition-colors hover:bg-zinc-100"
+                  >
                     Directions
                   </a>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-[32px] border border-black/10 overflow-hidden flex flex-col">
-              <div className="h-[380px] sm:h-[440px] relative bg-[#EDE6D6] overflow-hidden">
+            <div className="flex flex-col overflow-hidden rounded-[32px] border border-black/10 bg-white">
+              <div className="relative h-[380px] overflow-hidden bg-[#EDE6D6] sm:h-[440px]">
                 <iframe
                   title="Baldy the Barber Map"
                   src="https://www.google.com/maps?q=9935+Stephen+Decatur+Hwy+Ocean+City+MD+21842&z=15&output=embed"
-                  className="absolute inset-0 w-full h-full border-0"
+                  className="absolute inset-0 h-full w-full border-0"
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
                 />
-                <div className="pointer-events-none absolute top-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-[340px] bg-white rounded-2xl p-4 shadow-xl border border-black/10">
+
+                <div className="pointer-events-none absolute left-4 right-4 top-4 rounded-2xl border border-black/10 bg-white p-4 shadow-xl sm:left-auto sm:right-4 sm:w-[340px]">
                   <div className="flex items-center gap-3">
-                    <img src="/logo.png" alt="logo" className="w-12 h-12 object-contain" />
+                    <img src="/logo.png" alt="logo" className="h-12 w-12 object-contain" />
                     <div>
-                      <div className="font-black text-sm leading-none">Baldy The Barber — Michael</div>
+                      <div className="text-sm font-black leading-none">Baldy The Barber — Michael</div>
                       <div className="text-xs text-black/60">4.7★ • One Spot Per Person</div>
-                      <div className="flex items-center gap-1.5 mt-1 text-xs font-bold">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${inQueue ? 'bg-emerald-500 text-white' : 'bg-[#111111] text-white'}`}>{inQueue ? "You're In ✓" : `${peopleAhead} ahead`}</span>
+                      <div className="mt-1 flex items-center gap-1.5 text-xs font-bold">
+                        <span
+                          className={cx(
+                            'rounded-full px-2 py-0.5 text-[10px]',
+                            inQueue ? 'bg-emerald-500 text-white' : 'bg-[#111111] text-white'
+                          )}
+                        >
+                          {inQueue ? "You're In ✓" : `${peopleAhead} ahead`}
+                        </span>
                         <span className="text-black/60">~{waitMins} min</span>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
-              <div className="p-6 sm:p-7 mt-auto">
-                <h3 className="font-black text-[16px]">One Spot Per Person — Fair Line</h3>
-                <p className="mt-2 text-sm text-black/60">Join once, hold one spot. Can't double-book. Leave if you need to, then rejoin. Keeps Saturdays fair.</p>
+
+              <div className="mt-auto p-6 sm:p-7">
+                <h3 className="text-[16px] font-black">One Spot Per Person — Fair Line</h3>
+                <p className="mt-2 text-sm text-black/60">
+                  Join once, hold one spot. Can't double-book. Leave if you need to, then rejoin. Keeps Saturdays fair.
+                </p>
                 <div className="mt-4 flex gap-2">
-                  <button onClick={handleJoinQueue} disabled={inQueue >=2} className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-black tracking-widest uppercase ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
-                    {inQueue ? "✓ You're In Line" : "Join Queue — Once Only"}
+                  <button
+                    onClick={handleJoinQueue}
+                    disabled={inQueue >= 2}
+                    className={cx(
+                      'inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-black uppercase tracking-widest',
+                      inQueue ? 'cursor-not-allowed bg-emerald-100 text-emerald-700' : 'bg-[#111111] text-white'
+                    )}
+                  >
+                    {inQueue ? '✓ You\'re In Line' : 'Join Queue — Once Only'}
                   </button>
-                  <button onClick={handleLeaveQueue} disabled={!inQueue <=0} className={`px-5 py-2.5 text-xs font-black uppercase rounded-full border ${!inQueue ? 'border-black/5 text-black/20 cursor-not-allowed' : 'border-black/10 text-black'}`}>
+                  <button
+                    onClick={handleLeaveQueue}
+                    disabled={inQueue <= 0}
+                    className={cx(
+                      'rounded-full border px-5 py-2.5 text-xs font-black uppercase',
+                      inQueue <= 0 ? 'cursor-not-allowed border-black/5 text-black/20' : 'border-black/10 bg-[#FDF8F0] text-black'
+                    )}
+                  >
                     Leave
                   </button>
                 </div>
@@ -733,23 +1185,45 @@ const handleLeaveQueue = () => {
         </div>
       </section>
 
-      {/* CTA */}
       <section className="pb-8">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-[#C5A059] rounded-[28px] px-6 sm:px-10 py-8 sm:py-10 flex flex-col lg:flex-row items-center justify-between gap-6 relative overflow-hidden">
-            <div className="absolute inset-0 opacity-10" style={{ backgroundImage: `repeating-linear-gradient(90deg, transparent 0 20px, black 20px 21px)` }} />
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8">
+          <div className="relative flex flex-col items-center justify-between gap-6 overflow-hidden rounded-[28px] bg-[#C5A059] px-6 py-8 sm:px-10 sm:py-10 lg:flex-row">
+            <div
+              className="absolute inset-0 opacity-10"
+              style={{ backgroundImage: 'repeating-linear-gradient(90deg, transparent 0 20px, black 20px 21px)' }}
+            />
+
             <div className="relative flex items-center gap-4">
-              <img src="/logo.png" alt="logo" className="w-16 h-16 object-contain bg-white rounded-2xl p-1 shadow-lg hidden sm:block" />
+              <img src="/logo.png" alt="logo" className="hidden h-16 w-16 rounded-2xl bg-white object-contain p-1 shadow-lg sm:block" />
               <div>
-                <div className="text-[12px] font-black tracking-[0.18em] uppercase text-black/60">One Spot Per Person • {inQueue ? "You're In" : "Join Once"}</div>
-                <div className="text-[24px] sm:text-[30px] font-black leading-none tracking-tight" style={{ fontFamily: 'Playfair Display, serif' }}>{inQueue ? "You hold one spot." : "One tap. One spot."}</div>
+                <div className="text-[12px] font-black uppercase tracking-[0.18em] text-black/60">
+                  One Spot Per Person • {inQueue ? "You're In" : 'Join Once'}
+                </div>
+                <div className="text-[24px] font-black leading-none tracking-tight sm:text-[30px]" style={{ fontFamily: 'Playfair Display, serif' }}>
+                  {inQueue ? 'You hold one spot.' : 'One tap. One spot.'}
+                </div>
               </div>
             </div>
-            <div className="relative flex flex-wrap gap-3 w-full lg:w-auto">
-              <button onClick={handleJoinQueue} disabled={inQueue >=2} className={`flex-1 lg:flex-none rounded-full px-8 py-4 font-black tracking-widest uppercase text-sm transition-colors ${inQueue ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
-                {inQueue ? "✓ In Queue" : "Join Queue"}
+
+            <div className="relative flex w-full flex-wrap gap-3 lg:w-auto">
+              <button
+                onClick={handleJoinQueue}
+                disabled={inQueue >= 2}
+                className={cx(
+                  'flex-1 rounded-full px-8 py-4 text-sm font-black uppercase tracking-widest transition-colors lg:flex-none',
+                  inQueue ? 'cursor-not-allowed bg-emerald-100 text-emerald-900' : 'bg-[#111111] text-white'
+                )}
+              >
+                {inQueue ? '✓ In Queue' : 'Join Queue'}
               </button>
-              <button onClick={handleLeaveQueue} disabled={!inQueue <=0} className={`flex-1 lg:flex-none rounded-full px-8 py-4 font-black tracking-widest uppercase text-sm border transition-colors ${!inQueue ? 'border-black/10 bg-white text-black/20 cursor-not-allowed' : 'border-black/10 bg-white text-black'}`}>
+              <button
+                onClick={handleLeaveQueue}
+                disabled={inQueue <= 0}
+                className={cx(
+                  'flex-1 rounded-full border px-8 py-4 text-sm font-black uppercase tracking-widest transition-colors lg:flex-none',
+                  inQueue <= 0 ? 'cursor-not-allowed border-black/10 bg-white/40 text-black/40' : 'border-black/10 bg-white text-black'
+                )}
+              >
                 Leave
               </button>
             </div>
@@ -757,65 +1231,123 @@ const handleLeaveQueue = () => {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-[#0B0B0C] text-white pt-10 pb-8">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-[1.4fr_0.8fr_0.8fr_1fr] gap-8 pb-8 border-b border-white/10">
+      <footer className="bg-[#0B0B0C] pt-10 pb-8 text-white">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8">
+          <div className="grid gap-8 border-b border-white/10 pb-8 lg:grid-cols-[1.4fr_0.8fr_0.8fr_1fr]">
             <div>
               <div className="flex items-center gap-3">
-                <img src="/logo.png" alt="Baldy Logo" className="w-14 h-14 object-contain bg-white rounded-2xl p-1" />
+                <img src="/logo.png" alt="Baldy Logo" className="h-14 w-14 rounded-2xl bg-white object-contain p-1" />
                 <div>
-                  <div className="font-black tracking-tight leading-none text-lg" style={{ fontFamily: 'Playfair Display, serif' }}>BALDY THE BARBER</div>
-                  <div className="text-[11px] tracking-[0.18em] uppercase font-bold text-white/50">Michael • One Spot Rule • 4.7★</div>
+                  <div className="text-lg font-black leading-none tracking-tight" style={{ fontFamily: 'Playfair Display, serif' }}>
+                    BALDY THE BARBER
+                  </div>
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">
+                    Michael • One Spot Rule • 4.7★
+                  </div>
                 </div>
               </div>
-              <p className="mt-4 text-sm leading-relaxed text-white/60 max-w-[360px]">
+              <p className="mt-4 max-w-[360px] text-sm leading-relaxed text-white/60">
                 One chair, $30 classic, one spot per person in queue. Walk-ins only, Route 611. Fair line, sharp cut.
               </p>
             </div>
+
             <div>
-              <div className="text-xs font-black tracking-widest uppercase text-white/40">Queue Rule</div>
-              <div className="mt-4 text-sm text-white/70 leading-relaxed">You can only join once until you leave. Prevents double booking, keeps wait honest.</div>
+              <div className="text-xs font-black uppercase tracking-widest text-white/40">Queue Rule</div>
+              <div className="mt-4 text-sm leading-relaxed text-white/70">
+                You can only join once until you leave. Prevents double booking, keeps wait honest.
+              </div>
             </div>
+
             <div>
-              <div className="text-xs font-black tracking-widest uppercase text-white/40">Hours</div>
+              <div className="text-xs font-black uppercase tracking-widest text-white/40">Hours</div>
               <ul className="mt-4 space-y-2 text-sm">
-                <li className="flex justify-between text-white/70"><span>Mon–Fri</span><span className="text-white font-bold">9–4</span></li>
-                <li className="flex justify-between text-white/70"><span>Saturday</span><span className="text-white font-bold">9–2</span></li>
-                <li className="flex justify-between text-white/40"><span>Sunday</span><span>Closed</span></li>
+                <li className="flex justify-between text-white/70">
+                  <span>Mon–Fri</span>
+                  <span className="font-bold text-white">9–4</span>
+                </li>
+                <li className="flex justify-between text-white/70">
+                  <span>Saturday</span>
+                  <span className="font-bold text-white">9–2</span>
+                </li>
+                <li className="flex justify-between text-white/40">
+                  <span>Sunday</span>
+                  <span>Closed</span>
+                </li>
               </ul>
             </div>
-            <div className="bg-white text-[#111111] rounded-2xl p-5">
-              <div className="text-xs font-black tracking-widest uppercase">Queue Status</div>
-              <div className="mt-2 font-black">{inQueue ? "✓ You're in line — One spot" : "Not in line — Join once"}</div>
-              <div className="text-xs text-black/60 mt-1">{peopleAhead} ahead • ~{waitMins} min • 9935 Stephen Decatur Hwy</div>
-              <button onClick={inQueue ? handleLeaveQueue : handleJoinQueue} className={`mt-4 w-full rounded-full py-3 text-xs font-black tracking-widest uppercase ${inQueue ? 'bg-zinc-100 border border-black/5 text-black' : 'bg-[#111111] text-white'}`}>
-                {inQueue ? "Leave My Spot" : "Join Queue — One Spot Only"}
+
+            <div className="rounded-2xl bg-white p-5 text-[#111111]">
+              <div className="text-xs font-black uppercase tracking-widest">Queue Status</div>
+              <div className="mt-2 font-black">
+                {inQueue ? "✓ You're in line — One spot" : 'Not in line — Join once'}
+              </div>
+              <div className="mt-1 text-xs text-black/60">
+                {peopleAhead} ahead • ~{waitMins} min • 9935 Stephen Decatur Hwy
+              </div>
+              <button
+                onClick={inQueue ? handleLeaveQueue : handleJoinQueue}
+                className={cx(
+                  'mt-4 w-full rounded-full py-3 text-xs font-black uppercase tracking-widest',
+                  inQueue ? 'bg-zinc-100 text-black' : 'bg-[#111111] text-white'
+                )}
+              >
+                {inQueue ? 'Leave My Spot' : 'Join Queue — One Spot Only'}
               </button>
             </div>
           </div>
-          <div className="pt-6 text-xs text-white/40">© {new Date().getFullYear()} Baldy The Barber — Owner Michael • One Spot Per Person • $30 Classic</div>
+
+          <div className="pt-6 text-xs text-white/40">
+            © {new Date().getFullYear()} Baldy The Barber — Owner Michael • One Spot Per Person • $30 Classic
+          </div>
         </div>
       </footer>
 
-      {/* Info Modal */}
       {infoOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setInfoOpen(false)} />
-          <div className="relative bg-[#FDF8F0] w-full sm:max-w-[520px] rounded-t-[28px] sm:rounded-[28px] shadow-2xl overflow-auto max-h-[90vh]">
-            <div className="sticky top-0 bg-[#FDF8F0] border-b border-black/10 px-6 py-5 flex items-center justify-between">
+          <div className="relative max-h-[90vh] w-full overflow-auto rounded-t-[28px] bg-[#FDF8F0] shadow-2xl sm:max-w-[520px] sm:rounded-[28px]">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-black/10 bg-[#FDF8F0] px-6 py-5">
               <div className="font-black">One Spot Per Person — How It Works</div>
-              <button onClick={() => setInfoOpen(false)} className="w-9 h-9 rounded-full bg-white border border-black/10 flex items-center justify-center"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+              <button
+                onClick={() => setInfoOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-white"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
-            <div className="p-6 space-y-4 text-sm leading-relaxed">
-              <p><b>Rule:</b> You can only hold one spot at a time. Tap Join once, you're in. Tap again and it tells you you're already in. Leave to free your spot.</p>
-              <p><b>Why?</b> Stops someone from spamming the board and jumping line. Keeps it fair — Michael sees real count.</p>
-              <p><b>Current:</b> {peopleAhead} people ahead, ~{waitMins} min. {inQueue ? "You have 1 spot held." : "You're not in line yet — tap Join once."}</p>
+
+            <div className="space-y-4 p-6 text-sm leading-relaxed">
+              <p>
+                <b>Rule:</b> You can only hold one spot at a time. Tap Join once, you're in. Tap again and it tells you you're already in. Leave to free your spot.
+              </p>
+              <p>
+                <b>Why:</b> Stops someone from spamming the board and jumping line. Keeps it fair — Michael sees real count.
+              </p>
+              <p>
+                <b>Current:</b> {peopleAhead} people ahead, ~{waitMins} min. {inQueue ? 'You have 1 spot held.' : "You're not in line yet — tap Join once."}
+              </p>
+
               <div className="grid grid-cols-2 gap-2 pt-2">
-                <button onClick={handleJoinQueue} disabled={inQueue >=2} className={`rounded-full py-3 text-xs font-black uppercase ${inQueue ? 'bg-zinc-100 text-black/30 cursor-not-allowed' : 'bg-[#111111] text-white'}`}>
-                  {inQueue ? "Already In" : "Join"}
+                <button
+                  onClick={handleJoinQueue}
+                  disabled={inQueue >= 2}
+                  className={cx(
+                    'rounded-full py-3 text-xs font-black uppercase',
+                    inQueue ? 'cursor-not-allowed bg-zinc-100 text-black/30' : 'bg-[#111111] text-white'
+                  )}
+                >
+                  {inQueue ? 'Already In' : 'Join'}
                 </button>
-                <button onClick={handleLeaveQueue} disabled={!inQueue <=0} className={`rounded-full py-3 text-xs font-black uppercase border ${!inQueue ? 'bg-white text-black/20 border-black/5 cursor-not-allowed' : 'border-black/10 bg-white text-black'}`}>
+                <button
+                  onClick={handleLeaveQueue}
+                  disabled={inQueue <= 0}
+                  className={cx(
+                    'rounded-full border py-3 text-xs font-black uppercase',
+                    inQueue <= 0 ? 'cursor-not-allowed border-black/5 bg-white text-black/20' : 'border-black/10 bg-[#FDF8F0] text-black'
+                  )}
+                >
                   Leave
                 </button>
               </div>
@@ -824,58 +1356,95 @@ const handleLeaveQueue = () => {
         </div>
       )}
 
-      {/* Review Modal */}
       {reviewOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setReviewOpen(false)} />
-          <div className="relative bg-[#FDF8F0] w-full sm:max-w-[520px] max-h-[92vh] overflow-auto rounded-t-[28px] sm:rounded-[28px] shadow-2xl border border-black/10">
-            <div className="sticky top-0 bg-[#FDF8F0] border-b border-black/10 px-6 py-5 flex items-center justify-between z-10">
+          <div className="relative max-h-[92vh] w-full overflow-auto rounded-t-[28px] border border-black/10 bg-[#FDF8F0] shadow-2xl sm:max-w-[520px] sm:rounded-[28px]">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-black/10 bg-[#FDF8F0] px-6 py-5">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#111111] text-white flex items-center justify-center font-black">★</div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#111111] font-black text-white">★</div>
                 <div>
                   <div className="font-black leading-none">Leave a Review for Michael</div>
-                  <div className="text-xs text-black/50 font-semibold">4.7★ average</div>
+                  <div className="text-xs font-semibold text-black/50">4.7★ average</div>
                 </div>
               </div>
-              <button onClick={() => setReviewOpen(false)} className="w-9 h-9 rounded-full bg-white border border-black/10 flex items-center justify-center"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+              <button
+                onClick={() => setReviewOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-white"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
-            <form onSubmit={handleAddReview} className="px-6 py-6 space-y-5">
+
+            <form onSubmit={handleAddReview} className="space-y-5 px-6 py-6">
               <div>
-                <label className="text-xs font-black tracking-widest uppercase text-black/60">Your Rating</label>
+                <label className="text-xs font-black uppercase tracking-widest text-black/60">Your Rating</label>
                 <div className="mt-2 flex gap-2">
-                  {[1,2,3,4,5].map(n => (
-                    <button key={n} type="button" onClick={()=> setNewStars(n)} className={`w-11 h-11 rounded-full border flex items-center justify-center text-lg ${newStars>=n ? 'bg-[#111111] text-white border-[#111111]' : 'bg-white text-black/60 border-black/10'}`}>
+                  {[1, 2, 3, 4, 5].map((rating) => (
+                    <button
+                      key={rating}
+                      type="button"
+                      onClick={() => setNewStars(rating)}
+                      className={cx(
+                        'flex h-11 w-11 items-center justify-center rounded-full border text-lg',
+                        newStars >= rating ? 'border-[#111111] bg-[#111111] text-white' : 'border-black/10 bg-white text-black/50'
+                      )}
+                    >
                       ★
                     </button>
                   ))}
                 </div>
               </div>
+
               <div>
-                <label className="text-xs font-black tracking-widest uppercase text-black/60">Your Name</label>
-                <input value={newName} onChange={e=>setNewName(e.target.value)} required placeholder="e.g. Alex" className="mt-2 w-full bg-white border border-black/10 rounded-2xl px-4 py-3.5 text-sm outline-none focus:border-[#C5A059]" />
+                <label className="text-xs font-black uppercase tracking-widest text-black/60">Your Name</label>
+                <input
+                  value={newName}
+                  onChange={(event) => setNewName(event.target.value)}
+                  required
+                  placeholder="e.g. Alex"
+                  className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 text-sm outline-none ring-0 placeholder:text-black/30 focus:border-[#111111]"
+                />
               </div>
+
               <div>
-                <label className="text-xs font-black tracking-widest uppercase text-black/60">Your Review</label>
-                <textarea value={newText} onChange={e=>setNewText(e.target.value)} required rows={4} placeholder="How was your cut?" className="mt-2 w-full bg-white border border-black/10 rounded-2xl px-4 py-3.5 text-sm outline-none focus:border-[#C5A059]" />
+                <label className="text-xs font-black uppercase tracking-widest text-black/60">Your Review</label>
+                <textarea
+                  value={newText}
+                  onChange={(event) => setNewText(event.target.value)}
+                  required
+                  rows={4}
+                  placeholder="How was your cut?"
+                  className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 text-sm outline-none placeholder:text-black/30 focus:border-[#111111]"
+                />
               </div>
-              <button type="submit" className="w-full bg-[#111111] text-white rounded-full py-4 font-black tracking-widest uppercase text-sm">Post Review — {newStars}★</button>
+
+              <button
+                type="submit"
+                className="w-full rounded-full bg-[#111111] py-4 text-sm font-black uppercase tracking-widest text-white"
+              >
+                Post Review — {newStars}★
+              </button>
             </form>
           </div>
         </div>
       )}
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#111111] text-white px-5 py-3 rounded-full shadow-xl flex items-center gap-3 text-sm font-semibold max-w-[90vw]">
-          <span className="w-7 h-7 rounded-full bg-[#C5A059] flex items-center justify-center text-black">✓</span>
+        <div className="fixed bottom-6 left-1/2 z-50 flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-full bg-[#111111] px-5 py-3 text-sm font-semibold text-white shadow-xl">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#C5A059] text-black">✓</span>
           <span className="truncate">{toast}</span>
         </div>
       )}
 
       <style>{`
         @keyframes marquee {
-          0% { transform: translateX(0) }
-          100% { transform: translateX(-50%) }
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
         }
+
         .animate-marquee {
           animation: marquee 22s linear infinite;
         }
